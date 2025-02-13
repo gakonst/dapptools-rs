@@ -5474,6 +5474,46 @@
     },
     {
       "func": {
+        "id": "foundryVersionAtLeast",
+        "description": "Returns true if the current Foundry version is at least the given version.\nVersion string can be in the format `major.minor.patch`.",
+        "declaration": "function foundryVersionAtLeast(string calldata version) external view returns (bool);",
+        "visibility": "external",
+        "mutability": "view",
+        "signature": "foundryVersionAtLeast(string)",
+        "selector": "0x6248be1f",
+        "selectorBytes": [
+          98,
+          72,
+          190,
+          31
+        ]
+      },
+      "group": "testing",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
+        "id": "foundryVersionCmp",
+        "description": "Compares the current Foundry version with the given version string.\nVersion string can be in the format `major.minor.patch`.\nReturns:\n-1 if current version is less than the given version\n0 if current version equals the given version\n1 if current version is greater than the given version",
+        "declaration": "function foundryVersionCmp(string calldata version) external view returns (int256);",
+        "visibility": "external",
+        "mutability": "view",
+        "signature": "foundryVersionCmp(string)",
+        "selector": "0xca7b0a09",
+        "selectorBytes": [
+          202,
+          123,
+          10,
+          9
+        ]
+      },
+      "group": "testing",
+      "status": "stable",
+      "safety": "safe"
+    },
+    {
+      "func": {
         "id": "fsMetadata",
         "description": "Given a path, query the file system to get information about a file, directory, etc.",
         "declaration": "function fsMetadata(string calldata path) external view returns (FsMetadata memory metadata);",

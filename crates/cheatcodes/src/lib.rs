@@ -37,6 +37,8 @@ mod config;
 
 mod crypto;
 
+mod version;
+
 mod env;
 pub use env::set_execution_context;
 

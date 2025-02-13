@@ -42,4 +42,49 @@ contract GetFoundryVersionTest is DSTest {
         // Validate build profile (e.g., "debug" or "release")
         require(bytes(buildType).length > 0, "Build type is empty");
     }
+
+    function testFoundryVersionCmp() public {
+        // Should return -1 if current version is less than argument
+        assertEq(vm.foundryVersionCmp("99.0.0"), -1);
+
+        // (e.g. 0.3.0-nightly+3cb96bde9b.1737036656.debug)
+        string memory fullVersionString = vm.getFoundryVersion();
+
+        // Step 1: Split the version at "+"
+        string[] memory plusSplit = vm.split(fullVersionString, "+");
+        require(plusSplit.length == 2, "Invalid version format: Missing '+' separator");
+
+        // Step 2: Extract parts
+        string memory semanticVersion = plusSplit[0]; // "0.3.0-dev"
+        string[] memory semanticSplit = vm.split(semanticVersion, "-");
+
+        semanticVersion = semanticSplit[0]; // "0.3.0"
+        // Should return 0 if current version is equal to argument
+        assertEq(vm.foundryVersionCmp(semanticVersion), 0);
+
+        // Should return 1 if current version is greater than argument
+        assertEq(vm.foundryVersionCmp("0.0.1"), 1);
+    }
+
+    function testFoundryVersionAtLeast() public {
+        // Should return false for future versions
+        assertEq(vm.foundryVersionAtLeast("99.0.0"), false);
+
+        // (e.g. 0.3.0-nightly+3cb96bde9b.1737036656.debug)
+        string memory fullVersionString = vm.getFoundryVersion();
+
+        // Step 1: Split the version at "+"
+        string[] memory plusSplit = vm.split(fullVersionString, "+");
+        require(plusSplit.length == 2, "Invalid version format: Missing '+' separator");
+
+        // Step 2: Extract parts
+        string memory semanticVersion = plusSplit[0]; // "0.3.0-dev"
+        string[] memory semanticSplit = vm.split(semanticVersion, "-");
+
+        semanticVersion = semanticSplit[0]; // "0.3.0"
+        assertTrue(vm.foundryVersionAtLeast(semanticVersion));
+
+        // Should return true for past versions
+        assertTrue(vm.foundryVersionAtLeast("0.2.0"));
+    }
 }

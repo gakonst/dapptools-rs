@@ -267,6 +267,8 @@ interface Vm {
     function expectSafeMemoryCall(uint64 min, uint64 max) external;
     function fee(uint256 newBasefee) external;
     function ffi(string[] calldata commandInput) external returns (bytes memory result);
+    function foundryVersionAtLeast(string calldata version) external view returns (bool);
+    function foundryVersionCmp(string calldata version) external view returns (int256);
     function fsMetadata(string calldata path) external view returns (FsMetadata memory metadata);
     function getArtifactPathByCode(bytes calldata code) external view returns (string memory path);
     function getArtifactPathByDeployedCode(bytes calldata deployedCode) external view returns (string memory path);
