@@ -1040,6 +1040,14 @@ interface Vm {
     #[cheatcode(group = Testing, safety = Unsafe)]
     function expectEmitAnonymous(address emitter) external;
 
+    /// Expects the deployment of the specified bytecode by the specified address using the CREATE opcode
+    #[cheatcode(group = Testing, safety = Unsafe)]
+    function expectCreate(bytes calldata bytecode, address deployer) external;
+
+    /// Expects the deployment of the specified bytecode by the specified address using the CREATE2 opcode
+    #[cheatcode(group = Testing, safety = Unsafe)]
+    function expectCreate2(bytes calldata bytecode, address deployer) external;
+
     /// Expects an error on next call with any revert data.
     #[cheatcode(group = Testing, safety = Unsafe)]
     function expectRevert() external;

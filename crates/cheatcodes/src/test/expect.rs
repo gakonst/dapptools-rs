@@ -1,4 +1,7 @@
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    fmt::{self, Display},
+};
 
 use crate::{Cheatcode, Cheatcodes, CheatsCtxt, Error, Result, Vm::*};
 use alloy_primitives::{
@@ -102,6 +105,38 @@ pub struct ExpectedEmit {
     pub found: bool,
     /// Number of times the log is expected to be emitted
     pub count: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpectedCreate {
+    pub deployer: Address,
+    pub bytecode: Bytes,
+    pub create_scheme: CreateScheme,
+}
+
+#[derive(Clone, Debug)]
+pub enum CreateScheme {
+    Create,
+    Create2,
+}
+
+impl Display for CreateScheme {
+    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Create => write!(f, "CREATE"),
+            Self::Create2 => write!(f, "CREATE2"),
+        }
+    }
+}
+
+impl CreateScheme {
+    pub fn eq(&self, create_scheme: revm::primitives::CreateScheme) -> bool {
+        matches!(
+            (self, create_scheme),
+            (Self::Create, revm::primitives::CreateScheme::Create) |
+                (Self::Create2, revm::primitives::CreateScheme::Create2 { .. })
+        )
+    }
 }
 
 impl Cheatcode for expectCall_0Call {
@@ -335,6 +370,30 @@ impl Cheatcode for expectEmitAnonymous_3Call {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { emitter } = *self;
         expect_emit(ccx.state, ccx.ecx.journaled_state.depth(), [true; 5], Some(emitter), true, 1)
+    }
+}
+
+impl Cheatcode for expectCreateCall {
+    fn apply(&self, state: &mut Cheatcodes) -> Result {
+        let Self { bytecode, deployer } = self;
+        let expected_create = ExpectedCreate {
+            bytecode: bytecode.clone(),
+            deployer: *deployer,
+            create_scheme: CreateScheme::Create,
+        };
+        expect_create(state, expected_create)
+    }
+}
+
+impl Cheatcode for expectCreate2Call {
+    fn apply(&self, state: &mut Cheatcodes) -> Result {
+        let Self { bytecode, deployer } = self;
+        let expected_create = ExpectedCreate {
+            bytecode: bytecode.clone(),
+            deployer: *deployer,
+            create_scheme: CreateScheme::Create2,
+        };
+        expect_create(state, expected_create)
     }
 }
 
@@ -887,6 +946,12 @@ impl LogCountMap {
     pub fn count_unchecked(&self) -> u64 {
         self.map.values().sum()
     }
+}
+
+fn expect_create(state: &mut Cheatcodes, expected_create: ExpectedCreate) -> Result {
+    state.expected_creates.push(expected_create);
+
+    Ok(Default::default())
 }
 
 fn expect_revert(
