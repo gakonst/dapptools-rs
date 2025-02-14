@@ -171,6 +171,21 @@ pub enum WalletSubcommands {
     #[command(visible_alias = "ls")]
     List(ListArgs),
 
+    /// Remove a wallet from the keystore.
+    ///
+    /// This command requires the wallet alias and will prompt for a password to ensure that only
+    /// an authorized user can remove the wallet.
+    #[command(visible_aliases = &["rm"], override_usage = "cast wallet remove --name <NAME>")]
+    Remove {
+        /// The alias (or name) of the wallet to remove.
+        #[arg(long, required = true)]
+        name: String,
+        /// Optionally provide the keystore directory if not provided. default directory will be
+        /// used (~/.foundry/keystores).
+        #[arg(long)]
+        dir: Option<String>,
+    },
+
     /// Derives private key from mnemonic
     #[command(name = "private-key", visible_alias = "pk", aliases = &["derive-private-key", "--derive-private-key"])]
     PrivateKey {
@@ -453,6 +468,32 @@ flag to set your key via:
             }
             Self::List(cmd) => {
                 cmd.run().await?;
+            }
+            Self::Remove { name, dir } => {
+                let dir = if let Some(path) = dir {
+                    Path::new(&path).to_path_buf()
+                } else {
+                    Config::foundry_keystores_dir().ok_or_else(|| {
+                        eyre::eyre!("Could not find the default keystore directory.")
+                    })?
+                };
+
+                let keystore_path = Path::new(&dir).join(&name);
+                if !keystore_path.exists() {
+                    eyre::bail!("Keystore file does not exist at {}", keystore_path.display());
+                }
+                let password = rpassword::prompt_password("Enter password: ")?;
+
+                if PrivateKeySigner::decrypt_keystore(&keystore_path, password).is_err() {
+                    eyre::bail!("Invalid password - wallet removal cancelled");
+                }
+
+                std::fs::remove_file(&keystore_path).wrap_err_with(|| {
+                    format!("Failed to remove keystore file at {}", keystore_path.display())
+                })?;
+
+                let success_message = format!("`{}` keystore was removed successfully.", &name);
+                sh_println!("{}", success_message.green())?;
             }
             Self::PrivateKey {
                 wallet,
