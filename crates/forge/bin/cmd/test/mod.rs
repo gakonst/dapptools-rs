@@ -1,4 +1,4 @@
-use super::{install, test::filter::ProjectPathsAwareFilter, watch::WatchArgs};
+use super::{test::filter::ProjectPathsAwareFilter, watch::WatchArgs};
 use alloy_primitives::U256;
 use chrono::Utc;
 use clap::{Parser, ValueHint};
@@ -16,6 +16,7 @@ use forge::{
     },
     MultiContractRunner, MultiContractRunnerBuilder, TestFilter,
 };
+use forge_verify::install_missing_dependencies;
 use foundry_cli::{
     opts::{BuildOpts, GlobalArgs},
     utils::{self, LoadConfig},
@@ -292,7 +293,7 @@ impl TestArgs {
         }
 
         // Install missing dependencies.
-        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+        if install_missing_dependencies(&mut config) && config.auto_detect_remappings {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }

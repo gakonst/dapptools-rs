@@ -1,4 +1,4 @@
-use super::{install, test::TestArgs, watch::WatchArgs};
+use super::{test::TestArgs, watch::WatchArgs};
 use alloy_primitives::{map::HashMap, Address, Bytes, U256};
 use clap::{Parser, ValueEnum, ValueHint};
 use eyre::{Context, Result};
@@ -13,6 +13,7 @@ use forge::{
     utils::IcPcMap,
     MultiContractRunnerBuilder,
 };
+use forge_verify::install_missing_dependencies;
 use foundry_cli::utils::{LoadConfig, STATIC_FUZZ_SEED};
 use foundry_common::compile::ProjectCompiler;
 use foundry_compilers::{
@@ -88,7 +89,7 @@ impl CoverageArgs {
         let (mut config, evm_opts) = self.load_config_and_evm_opts()?;
 
         // install missing dependencies
-        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+        if install_missing_dependencies(&mut config) && config.auto_detect_remappings {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }

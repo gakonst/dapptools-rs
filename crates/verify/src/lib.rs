@@ -27,3 +27,6 @@ pub use verify::{VerifierArgs, VerifyArgs, VerifyCheckArgs};
 mod types;
 
 mod utils;
+
+mod install;
+pub use install::{install_missing_dependencies, DependencyInstallOpts};

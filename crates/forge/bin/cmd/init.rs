@@ -1,6 +1,6 @@
-use super::install::DependencyInstallOpts;
 use clap::{Parser, ValueHint};
 use eyre::Result;
+use forge_verify::DependencyInstallOpts;
 use foundry_cli::utils::Git;
 use foundry_common::fs;
 use foundry_compilers::artifacts::remappings::Remapping;
