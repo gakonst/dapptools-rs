@@ -1,7 +1,8 @@
-use super::{init::InitArgs, install::DependencyInstallOpts};
+use super::init::InitArgs;
 use alloy_primitives::{Address, Bytes, ChainId, TxHash};
 use clap::{Parser, ValueHint};
 use eyre::Result;
+use forge_verify::DependencyInstallOpts;
 use foundry_block_explorers::{
     contract::{ContractCreationData, ContractMetadata, Metadata},
     errors::EtherscanError,

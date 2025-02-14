@@ -2,6 +2,7 @@
 
 use crate::{
     etherscan::EtherscanVerificationProvider,
+    install,
     provider::{VerificationProvider, VerificationProviderType},
     utils::is_host_only,
     RetryArgs,
@@ -187,7 +188,12 @@ impl figment::Provider for VerifyArgs {
 impl VerifyArgs {
     /// Run the verify command to submit the contract's source code for verification on etherscan
     pub async fn run(mut self) -> Result<()> {
-        let config = self.load_config()?;
+        let mut config = self.load_config()?;
+
+        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+            // need to re-configure here to also catch additional remappings
+            config = self.load_config()?;
+        }
 
         if self.guess_constructor_args && config.get_rpc_url().is_none() {
             eyre::bail!(

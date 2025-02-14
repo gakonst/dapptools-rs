@@ -1,4 +1,3 @@
-use crate::cmd::install;
 use alloy_chains::Chain;
 use alloy_dyn_abi::{DynSolValue, JsonAbiExt, Specifier};
 use alloy_json_abi::{Constructor, JsonAbi};
@@ -11,7 +10,7 @@ use alloy_signer::Signer;
 use alloy_transport::TransportError;
 use clap::{Parser, ValueHint};
 use eyre::{Context, Result};
-use forge_verify::{RetryArgs, VerifierArgs, VerifyArgs};
+use forge_verify::{install_missing_dependencies, RetryArgs, VerifierArgs, VerifyArgs};
 use foundry_cli::{
     opts::{BuildOpts, EthereumOpts, EtherscanOpts, TransactionOpts},
     utils::{self, read_constructor_args_file, remove_contract, LoadConfig},
@@ -106,7 +105,7 @@ impl CreateArgs {
         let mut config = self.load_config()?;
 
         // Install missing dependencies.
-        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+        if install_missing_dependencies(&mut config) && config.auto_detect_remappings {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }

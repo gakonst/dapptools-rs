@@ -1,6 +1,7 @@
-use super::{install, watch::WatchArgs};
+use super::watch::WatchArgs;
 use clap::Parser;
 use eyre::Result;
+use forge_verify::install_missing_dependencies;
 use foundry_cli::{opts::BuildOpts, utils::LoadConfig};
 use foundry_common::{compile::ProjectCompiler, shell};
 use foundry_compilers::{
@@ -69,7 +70,7 @@ impl BuildArgs {
     pub fn run(self) -> Result<ProjectCompileOutput> {
         let mut config = self.load_config()?;
 
-        if install::install_missing_dependencies(&mut config) && config.auto_detect_remappings {
+        if install_missing_dependencies(&mut config) && config.auto_detect_remappings {
             // need to re-configure here to also catch additional remappings
             config = self.load_config()?;
         }
