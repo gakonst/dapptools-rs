@@ -4,7 +4,7 @@ set -eo pipefail
 # NOTE: if you make modifications to this script, please increment the version number.
 # Major / minor: incremented for each stable release of Foundry.
 # Patch: incremented for each change between stable releases.
-FOUNDRYUP_INSTALLER_VERSION="1.0.1"
+FOUNDRYUP_INSTALLER_VERSION="1.0.2"
 
 BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
 FOUNDRY_DIR=${FOUNDRY_DIR:-"$BASE_DIR/.foundry"}
@@ -24,17 +24,60 @@ main() {
   need_cmd git
   need_cmd curl
 
+  # Argument validation flags
+  local has_action=0
+  local has_install=0
+  local has_use=0
+  local has_list=0
+  local has_update=0
+  local has_version=0
+  local has_help=0
+
   while [[ -n $1 ]]; do
     case $1 in
       --)               shift; break;;
 
-      -v|--version)     shift; version;;
-      -U|--update)      shift; update;;
+      -v|--version)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --version cannot be used with other actions."
+        fi
+        has_version=1
+        has_action=1
+        shift; version
+        ;;
+      -U|--update)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --update cannot be used with other actions."
+        fi
+        has_update=1
+        has_action=1
+        shift; update
+        ;;
       -r|--repo)        shift; FOUNDRYUP_REPO=$1;;
       -b|--branch)      shift; FOUNDRYUP_BRANCH=$1;;
-      -i|--install)     shift; FOUNDRYUP_VERSION=$1;;
-      -l|--list)        shift; list;;
-      -u|--use)         shift; FOUNDRYUP_VERSION=$1; use;;
+      -i|--install)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --install cannot be used with other actions."
+        fi
+        has_install=1
+        has_action=1
+        shift; FOUNDRYUP_VERSION=$1;;
+      -l|--list)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --list cannot be used with other actions."
+        fi
+        has_list=1
+        has_action=1
+        shift; list
+        ;;
+      -u|--use)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --use cannot be used with other actions."
+        fi
+        has_use=1
+        has_action=1
+        shift; FOUNDRYUP_VERSION=$1; use
+        ;;
       -p|--path)        shift; FOUNDRYUP_LOCAL_REPO=$1;;
       -P|--pr)          shift; FOUNDRYUP_PR=$1;;
       -C|--commit)      shift; FOUNDRYUP_COMMIT=$1;;
@@ -42,6 +85,12 @@ main() {
       --arch)           shift; FOUNDRYUP_ARCH=$1;;
       --platform)       shift; FOUNDRYUP_PLATFORM=$1;;
       -h|--help)
+        if [[ $has_action -ne 0 ]]; then
+          err "Invalid combination of arguments. --help cannot be used with other actions."
+        fi
+        has_help=1
+        has_action=1
+        shift
         usage
         exit 0
         ;;
@@ -49,8 +98,19 @@ main() {
         warn "unknown option: $1"
         usage
         exit 1
+        ;;
     esac; shift
   done
+
+  # If no action was specified, proceed with the default installation
+  if [[ $has_action -eq 0 ]]; then
+      # Default action: install stable
+      : # No action needed here, the default behavior will be handled below
+  elif [[ $has_install -eq 1 && -z "$FOUNDRYUP_VERSION" ]]; then
+      err "Error: --install requires a version argument."
+  elif [[ $has_use -eq 1 && -z "$FOUNDRYUP_VERSION" ]]; then
+      err "Error: --use requires a version argument."
+  fi
 
   CARGO_BUILD_ARGS=(--release)
 
@@ -100,7 +160,11 @@ main() {
 
   # Install by downloading binaries
   if [[ "$FOUNDRYUP_REPO" == "foundry-rs/foundry" && -z "$FOUNDRYUP_BRANCH" && -z "$FOUNDRYUP_COMMIT" ]]; then
-    FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-stable}
+      if [[ -z "$FOUNDRYUP_VERSION" ]] && [[ $has_install -eq 0 ]] && [[ $has_use -eq 0 ]];
+      then
+        FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-stable}
+      fi
+
     FOUNDRYUP_TAG=$FOUNDRYUP_VERSION
 
     # Normalize versions (handle channels, versions without v prefix
@@ -163,9 +227,9 @@ main() {
       tmp="$(mktemp -d 2>/dev/null || echo ".")/foundry.tar.gz"
       ensure download "$BIN_ARCHIVE_URL" "$tmp"
       # Make sure it's a valid tar archive.
-      ensure tar tf $tmp 1> /dev/null
+      ensure tar tf "$tmp" 1> /dev/null
       ensure mkdir -p "$FOUNDRY_VERSIONS_DIR/$FOUNDRYUP_TAG"
-      ensure tar -C "$FOUNDRY_VERSIONS_DIR/$FOUNDRYUP_TAG" -xvf $tmp
+      ensure tar -C "$FOUNDRY_VERSIONS_DIR/$FOUNDRYUP_TAG" -xvf "$tmp"
       rm -f "$tmp"
     fi
 
@@ -179,10 +243,23 @@ main() {
     fi
 
     # Use newly installed version.
-    FOUNDRYUP_VERSION=$FOUNDRYUP_TAG
-    use
+    if [[ -z "$FOUNDRYUP_VERSION" ]] && [[ $has_install -eq 1 ]]; then
+        err "Error: --install needs a version"
+    fi
+
+    if [[ $has_install -eq 1 ]] || [[ $has_use -eq 1 ]]; then
+        :
+    else
+        FOUNDRYUP_VERSION=$FOUNDRYUP_TAG
+    fi
+
+    if [[ $has_action -eq 0 ]] || [[ $has_install -eq 1 ]] || [[ $has_use -eq 1 ]];
+    then
+        use
+    fi
 
     say "done!"
+    exit 0
 
   # Install by cloning the repo with the provided branch/tag
   else
@@ -244,6 +321,7 @@ main() {
     fi
 
     say "done"
+    exit 0
   fi
 }
 
