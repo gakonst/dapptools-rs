@@ -229,7 +229,26 @@ impl AsDoc for Document {
                             writer.write_subtitle("Enums")?;
                             enums.into_iter().try_for_each(|(item, comments, code)| {
                                 writer.write_heading(&item.name.safe_unwrap().name)?;
-                                writer.write_section(comments, code)
+                                writer.write_section(comments, code)?;
+
+                                let variants: Vec<_> = comments
+                                .include_tag(CommentTag::Variant)
+                                .iter()
+                                .filter_map(|c| {
+                                    let (name, desc) = c.value.split_once(' ')?;
+                                    Some((name.trim().to_string(), desc.trim().to_string()))
+                                })
+                                .collect();
+                                if !variants.is_empty() {
+                                    writer.writeln()?;
+                                    writer.write_bold("Cases:")?;
+                                    writer.writeln_raw("| Name | Description |")?;
+                                    writer.writeln_raw("|------|-------------|")?;
+                                    for (name, desc) in variants {
+                                        writer.writeln_raw(&format!("| `{}` | {} |", name, desc))?;
+                                    }
+                                }
+                                Ok::<_, std::fmt::Error>(())
                             })?;
                         }
                     }
@@ -273,7 +292,29 @@ impl AsDoc for Document {
                         writer.write_section(&item.comments, &item.code)?;
                         writer.try_write_errors_table(&err.fields, &item.comments)?;
                     }
-                    ParseSource::Variable(_) | ParseSource::Enum(_) | ParseSource::Type(_) => {
+                    ParseSource::Enum(_) => {
+                        writer.writeln_doc(&item.comments)?;
+                        writer.write_code(&item.code)?;
+
+                        let variants: Vec<_> = item.comments
+                            .include_tag(CommentTag::Variant)
+                            .iter()
+                            .filter_map(|c| {
+                                let (name, desc) = c.value.split_once(' ')?;
+                                Some((name.trim().to_string(), desc.trim().to_string()))
+                            })
+                            .collect();
+                            if !variants.is_empty() {
+                                writer.writeln()?;
+                                writer.write_bold("Cases:")?;
+                                writer.writeln_raw("| Name | Description |")?;
+                                writer.writeln_raw("|------|-------------|")?;
+                                for (name, desc) in variants {
+                                    writer.writeln_raw(&format!("| `{}` | {} |", name, desc))?;
+                                }
+                            }
+                    }
+                    ParseSource::Variable(_) | ParseSource::Type(_) => {
                         writer.write_section(&item.comments, &item.code)?;
                     }
                 }

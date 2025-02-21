@@ -21,6 +21,7 @@ pub enum CommentTag {
     /// Copies all missing tags from the base function (must be followed by the contract name)
     Inheritdoc,
     /// Custom tag, semantics is application-defined
+    Variant,
     Custom(String),
 }
 
@@ -41,6 +42,7 @@ impl CommentTag {
                 let custom_tag = trimmed.trim_start_matches("custom:").trim();
                 match custom_tag {
                     "param" => Self::Param,
+                    "variant" => Self::Variant,
                     _ => Self::Custom(custom_tag.to_owned()),
                 }
             }
