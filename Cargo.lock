@@ -1016,6 +1016,7 @@ dependencies = [
  "op-alloy-rpc-types",
  "parking_lot",
  "rand",
+ "regex",
  "revm",
  "serde",
  "serde_json",
@@ -4087,9 +4088,9 @@ dependencies = [
 
 [[package]]
 name = "foundry-fork-db"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8e9c37fd94d2b6ac89c9b83ec3e4fca43fa04866002da250aa97255ff261778"
+checksum = "1b7fd68c310825f5589021df0a51394d45fbc6a0a4eb4209c3882474c7653169"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
