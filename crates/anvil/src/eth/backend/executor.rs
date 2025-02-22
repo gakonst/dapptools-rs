@@ -108,6 +108,7 @@ pub struct TransactionExecutor<'a, Db: ?Sized, V: TransactionValidator> {
     pub enable_steps_tracing: bool,
     pub odyssey: bool,
     pub print_logs: bool,
+    pub print_traces: bool,
     /// Precompiles to inject to the EVM.
     pub precompile_factory: Option<Arc<dyn PrecompileFactory>>,
 }
@@ -312,6 +313,9 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
         if self.print_logs {
             inspector = inspector.with_log_collector();
         }
+        if self.print_traces {
+            inspector = inspector.with_trace_printer();
+        }
 
         let exec_result = {
             let mut evm = new_evm_with_inspector(&mut *self.db, env, &mut inspector, self.odyssey);
@@ -345,6 +349,10 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
                 }
             }
         };
+
+        if self.print_traces {
+            inspector.print_traces();
+        }
         inspector.print_logs();
 
         let (exit_reason, gas_used, out, logs) = match exec_result {

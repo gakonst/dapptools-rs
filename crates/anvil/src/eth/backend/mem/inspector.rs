@@ -1,6 +1,6 @@
 //! Anvil specific [`revm::Inspector`] implementation
 
-use crate::revm::Database;
+use crate::{eth::macros::node_info, revm::Database};
 use alloy_primitives::{Address, Log};
 use foundry_evm::{
     call_inspectors,
@@ -13,14 +13,17 @@ use foundry_evm::{
         primitives::U256,
         EvmContext,
     },
-    traces::TracingInspectorConfig,
+    traces::{
+        render_trace_arena_inner, CallTraceDecoder, SparsedTraceArena, TracingInspectorConfig,
+    },
 };
 
 /// The [`revm::Inspector`] used when transacting in the evm
 #[derive(Clone, Debug, Default)]
 pub struct Inspector {
+    /// Collects all traces
     pub tracer: Option<TracingInspector>,
-    /// collects all `console.sol` logs
+    /// Collects all `console.sol` logs
     pub log_collector: Option<LogCollector>,
 }
 
@@ -31,6 +34,21 @@ impl Inspector {
     pub fn print_logs(&self) {
         if let Some(collector) = &self.log_collector {
             print_logs(&collector.logs);
+        }
+    }
+
+    /// Consumes the type and prints the traces.
+    pub fn into_print_traces(mut self) {
+        if let Some(a) = self.tracer.take() {
+            print_traces(a)
+        }
+    }
+
+    /// Called after the inspecting the evm
+    /// This will log all traces
+    pub fn print_traces(&self) {
+        if let Some(a) = self.tracer.clone() {
+            print_traces(a)
         }
     }
 
@@ -51,11 +69,39 @@ impl Inspector {
         self
     }
 
-    /// Configures the `Tracer` [`revm::Inspector`]
+    /// Configures the `Tracer` [`revm::Inspector`] with a log collector
     pub fn with_log_collector(mut self) -> Self {
         self.log_collector = Some(Default::default());
         self
     }
+
+    /// Configures the `Tracer` [`revm::Inspector`] with a trace printer
+    pub fn with_trace_printer(mut self) -> Self {
+        self.tracer = Some(TracingInspector::new(TracingInspectorConfig::all().with_state_diffs()));
+        self
+    }
+}
+
+/// Prints the traces for the inspector
+///
+/// Caution: This blocks on call trace decoding
+///
+/// # Panics
+///
+/// If called outside tokio runtime
+fn print_traces(tracer: TracingInspector) {
+    let arena = tokio::task::block_in_place(move || {
+        tokio::runtime::Handle::current().block_on(async move {
+            let mut arena = tracer.into_traces();
+            let decoder = CallTraceDecoder::new();
+            decoder.populate_traces(arena.nodes_mut()).await;
+            arena
+        })
+    });
+
+    let traces = SparsedTraceArena { arena, ignored: Default::default() };
+    node_info!("Traces:");
+    node_info!("{}", render_trace_arena_inner(&traces, false, true));
 }
 
 impl<DB: Database> revm::Inspector<DB> for Inspector {
