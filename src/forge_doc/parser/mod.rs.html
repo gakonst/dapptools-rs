@@ -1,0 +1,352 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/doc/src/parser/mod.rs`."><title>mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-6c3ea77c.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="forge_doc" data-themes="" data-resource-suffix="" data-rustdoc-version="1.87.0-nightly (46420c960 2025-02-22)" data-channel="nightly" data-search-js="search-f7327375.js" data-settings-js="settings-6dad6058.js" ><script src="../../../static.files/storage-3a5871a4.js"></script><script defer src="../../../static.files/src-script-b8d3f215.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-5332ae0c.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">forge_doc/parser/</div>mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! The parser module.
+<a href=#2 id=2 data-nosnippet>2</a>
+<a href=#3 id=3 data-nosnippet>3</a></span><span class="kw">use </span>forge_fmt::{FormatterConfig, Visitable, Visitor};
+<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>itertools::Itertools;
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>solang_parser::{
+<a href=#6 id=6 data-nosnippet>6</a>    doccomment::{parse_doccomments, DocComment},
+<a href=#7 id=7 data-nosnippet>7</a>    pt::{
+<a href=#8 id=8 data-nosnippet>8</a>        Comment <span class="kw">as </span>SolangComment, EnumDefinition, ErrorDefinition, EventDefinition,
+<a href=#9 id=9 data-nosnippet>9</a>        FunctionDefinition, Identifier, Loc, SourceUnit, SourceUnitPart, StructDefinition,
+<a href=#10 id=10 data-nosnippet>10</a>        TypeDefinition, VariableDefinition,
+<a href=#11 id=11 data-nosnippet>11</a>    },
+<a href=#12 id=12 data-nosnippet>12</a>};
+<a href=#13 id=13 data-nosnippet>13</a>
+<a href=#14 id=14 data-nosnippet>14</a><span class="doccomment">/// Parser error.
+<a href=#15 id=15 data-nosnippet>15</a></span><span class="kw">pub mod </span><a href="error.rs.html#1-17">error</a>;
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>error::{<a href="error.rs.html#7-14">ParserError</a>, <a href="error.rs.html#17">ParserResult</a>};
+<a href=#17 id=17 data-nosnippet>17</a>
+<a href=#18 id=18 data-nosnippet>18</a><span class="doccomment">/// Parser item.
+<a href=#19 id=19 data-nosnippet>19</a></span><span class="kw">mod </span><a href="item.rs.html#1-186">item</a>;
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">pub use </span>item::{<a href="item.rs.html#13-22">ParseItem</a>, <a href="item.rs.html#151-168">ParseSource</a>};
+<a href=#21 id=21 data-nosnippet>21</a>
+<a href=#22 id=22 data-nosnippet>22</a><span class="doccomment">/// Doc comment.
+<a href=#23 id=23 data-nosnippet>23</a></span><span class="kw">mod </span><a href="comment.rs.html#1-269">comment</a>;
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">pub use </span>comment::{<a href="comment.rs.html#60-65">Comment</a>, <a href="comment.rs.html#8-25">CommentTag</a>, <a href="comment.rs.html#108">Comments</a>, <a href="comment.rs.html#162">CommentsRef</a>};
+<a href=#25 id=25 data-nosnippet>25</a>
+<a href=#26 id=26 data-nosnippet>26</a><span class="doccomment">/// The documentation parser. This type implements a [Visitor] trait.
+<a href=#27 id=27 data-nosnippet>27</a>///
+<a href=#28 id=28 data-nosnippet>28</a>/// While walking the parse tree, [Parser] will collect relevant source items and corresponding
+<a href=#29 id=29 data-nosnippet>29</a>/// doc comments. The resulting [ParseItem]s can be accessed by calling [Parser::items].
+<a href=#30 id=30 data-nosnippet>30</a></span><span class="attr">#[derive(Debug, Default)]
+<a href=#31 id=31 data-nosnippet>31</a></span><span class="kw">pub struct </span><a href="../../../forge_doc/struct.Parser.html">Parser</a> {
+<a href=#32 id=32 data-nosnippet>32</a>    <span class="doccomment">/// Initial comments from solang parser.
+<a href=#33 id=33 data-nosnippet>33</a>    </span>comments: <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;SolangComment&gt;,
+<a href=#34 id=34 data-nosnippet>34</a>    <span class="doccomment">/// Parser context.
+<a href=#35 id=35 data-nosnippet>35</a>    </span>context: <a href="#46-51">ParserContext</a>,
+<a href=#36 id=36 data-nosnippet>36</a>    <span class="doccomment">/// Parsed results.
+<a href=#37 id=37 data-nosnippet>37</a>    </span>items: <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="item.rs.html#13-22">ParseItem</a>&gt;,
+<a href=#38 id=38 data-nosnippet>38</a>    <span class="doccomment">/// Source file.
+<a href=#39 id=39 data-nosnippet>39</a>    </span>source: <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>,
+<a href=#40 id=40 data-nosnippet>40</a>    <span class="doccomment">/// The formatter config.
+<a href=#41 id=41 data-nosnippet>41</a>    </span>fmt: FormatterConfig,
+<a href=#42 id=42 data-nosnippet>42</a>}
+<a href=#43 id=43 data-nosnippet>43</a>
+<a href=#44 id=44 data-nosnippet>44</a><span class="doccomment">/// [Parser] context.
+<a href=#45 id=45 data-nosnippet>45</a></span><span class="attr">#[derive(Debug, Default)]
+<a href=#46 id=46 data-nosnippet>46</a></span><span class="kw">struct </span><a href="../../../forge_doc/parser/struct.ParserContext.html">ParserContext</a> {
+<a href=#47 id=47 data-nosnippet>47</a>    <span class="doccomment">/// Current visited parent.
+<a href=#48 id=48 data-nosnippet>48</a>    </span>parent: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="item.rs.html#13-22">ParseItem</a>&gt;,
+<a href=#49 id=49 data-nosnippet>49</a>    <span class="doccomment">/// Current start pointer for parsing doc comments.
+<a href=#50 id=50 data-nosnippet>50</a>    </span>doc_start_loc: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>,
+<a href=#51 id=51 data-nosnippet>51</a>}
+<a href=#52 id=52 data-nosnippet>52</a>
+<a href=#53 id=53 data-nosnippet>53</a><span class="kw">impl </span><a href="#31-42">Parser</a> {
+<a href=#54 id=54 data-nosnippet>54</a>    <span class="doccomment">/// Create a new instance of [Parser].
+<a href=#55 id=55 data-nosnippet>55</a>    </span><span class="kw">pub fn </span>new(comments: <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;SolangComment&gt;, source: <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>) -&gt; <span class="self">Self </span>{
+<a href=#56 id=56 data-nosnippet>56</a>        <span class="self">Self </span>{ <a href="#55">comments</a>, <a href="#55">source</a>, ..<a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">Default::default</a>() }
+<a href=#57 id=57 data-nosnippet>57</a>    }
+<a href=#58 id=58 data-nosnippet>58</a>
+<a href=#59 id=59 data-nosnippet>59</a>    <span class="doccomment">/// Set formatter config on the [Parser]
+<a href=#60 id=60 data-nosnippet>60</a>    </span><span class="kw">pub fn </span>with_fmt(<span class="kw-2">mut </span><span class="self">self</span>, fmt: FormatterConfig) -&gt; <span class="self">Self </span>{
+<a href=#61 id=61 data-nosnippet>61</a>        <a class="self" href="#60">self</a>.fmt = <a href="#60">fmt</a>;
+<a href=#62 id=62 data-nosnippet>62</a>        <span class="self"><a href="#60">self</a>
+<a href=#63 id=63 data-nosnippet>63</a>    </span>}
+<a href=#64 id=64 data-nosnippet>64</a>
+<a href=#65 id=65 data-nosnippet>65</a>    <span class="doccomment">/// Return the parsed items. Consumes the parser.
+<a href=#66 id=66 data-nosnippet>66</a>    </span><span class="kw">pub fn </span>items(<span class="self">self</span>) -&gt; <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="item.rs.html#13-22">ParseItem</a>&gt; {
+<a href=#67 id=67 data-nosnippet>67</a>        <a class="self" href="#66">self</a>.items
+<a href=#68 id=68 data-nosnippet>68</a>    }
+<a href=#69 id=69 data-nosnippet>69</a>
+<a href=#70 id=70 data-nosnippet>70</a>    <span class="doccomment">/// Visit the children elements with parent context.
+<a href=#71 id=71 data-nosnippet>71</a>    /// This function memoizes the previous parent, sets the context
+<a href=#72 id=72 data-nosnippet>72</a>    /// to a new one and invokes a visit function. The context will be reset
+<a href=#73 id=73 data-nosnippet>73</a>    /// to the previous parent at the end of the function.
+<a href=#74 id=74 data-nosnippet>74</a>    </span><span class="kw">fn </span>with_parent(
+<a href=#75 id=75 data-nosnippet>75</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#76 id=76 data-nosnippet>76</a>        <span class="kw-2">mut </span>parent: <a href="item.rs.html#13-22">ParseItem</a>,
+<a href=#77 id=77 data-nosnippet>77</a>        <span class="kw-2">mut </span>visit: <span class="kw">impl </span><a href="https://doc.rust-lang.org/nightly/core/ops/function/trait.FnMut.html">FnMut</a>(<span class="kw-2">&amp;mut </span><span class="self">Self</span>) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt;,
+<a href=#78 id=78 data-nosnippet>78</a>    ) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;<a href="item.rs.html#13-22">ParseItem</a>&gt; {
+<a href=#79 id=79 data-nosnippet>79</a>        <span class="kw">let </span>curr = <a class="self" href="#75">self</a>.context.parent.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.take">take</a>();
+<a href=#80 id=80 data-nosnippet>80</a>        <a class="self" href="#75">self</a>.context.parent = <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(<a href="#76">parent</a>);
+<a href=#81 id=81 data-nosnippet>81</a>        <a href="#77">visit</a>(<a class="self" href="#75">self</a>)<span class="question-mark">?</span>;
+<a href=#82 id=82 data-nosnippet>82</a>        <a href="#76">parent</a> = <a class="self" href="#75">self</a>.context.parent.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.take">take</a>().<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.unwrap">unwrap</a>();
+<a href=#83 id=83 data-nosnippet>83</a>        <a class="self" href="#75">self</a>.context.parent = <a href="#79">curr</a>;
+<a href=#84 id=84 data-nosnippet>84</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a href="#76">parent</a>)
+<a href=#85 id=85 data-nosnippet>85</a>    }
+<a href=#86 id=86 data-nosnippet>86</a>
+<a href=#87 id=87 data-nosnippet>87</a>    <span class="doccomment">/// Adds a child element to the parent item if it exists.
+<a href=#88 id=88 data-nosnippet>88</a>    /// Otherwise the element will be added to a top-level items collection.
+<a href=#89 id=89 data-nosnippet>89</a>    /// Moves the doc comment pointer to the end location of the child element.
+<a href=#90 id=90 data-nosnippet>90</a>    </span><span class="kw">fn </span>add_element_to_parent(<span class="kw-2">&amp;mut </span><span class="self">self</span>, source: <a href="item.rs.html#151-168">ParseSource</a>, loc: Loc) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#91 id=91 data-nosnippet>91</a>        <span class="kw">let </span>child = <a class="self" href="#90">self</a>.<a href="#102-105">new_item</a>(<a href="#90">source</a>, <a href="#90">loc</a>.start())<span class="question-mark">?</span>;
+<a href=#92 id=92 data-nosnippet>92</a>        <span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(parent) = <a class="self" href="#90">self</a>.context.parent.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.as_mut">as_mut</a>() {
+<a href=#93 id=93 data-nosnippet>93</a>            <a href="#92">parent</a>.children.<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html#method.push">push</a>(<a href="#91">child</a>);
+<a href=#94 id=94 data-nosnippet>94</a>        } <span class="kw">else </span>{
+<a href=#95 id=95 data-nosnippet>95</a>            <a class="self" href="#90">self</a>.items.<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html#method.push">push</a>(<a href="#91">child</a>);
+<a href=#96 id=96 data-nosnippet>96</a>        }
+<a href=#97 id=97 data-nosnippet>97</a>        <a class="self" href="#90">self</a>.context.doc_start_loc = <a href="#90">loc</a>.end();
+<a href=#98 id=98 data-nosnippet>98</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#99 id=99 data-nosnippet>99</a>    }
+<a href=#100 id=100 data-nosnippet>100</a>
+<a href=#101 id=101 data-nosnippet>101</a>    <span class="doccomment">/// Create new [ParseItem] with comments and formatted code.
+<a href=#102 id=102 data-nosnippet>102</a>    </span><span class="kw">fn </span>new_item(<span class="kw-2">&amp;mut </span><span class="self">self</span>, source: <a href="item.rs.html#151-168">ParseSource</a>, loc_start: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;<a href="item.rs.html#13-22">ParseItem</a>&gt; {
+<a href=#103 id=103 data-nosnippet>103</a>        <span class="kw">let </span>docs = <a class="self" href="#102">self</a>.<a href="#108-110">parse_docs</a>(<a href="#102">loc_start</a>)<span class="question-mark">?</span>;
+<a href=#104 id=104 data-nosnippet>104</a>        <a href="item.rs.html#62-69">ParseItem::new</a>(<a href="#102">source</a>).<a href="item.rs.html#72-75">with_comments</a>(<a href="#103">docs</a>).<a href="item.rs.html#84-114">with_code</a>(<span class="kw-2">&amp;</span><a class="self" href="#102">self</a>.source, <a class="self" href="#102">self</a>.fmt.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>())
+<a href=#105 id=105 data-nosnippet>105</a>    }
+<a href=#106 id=106 data-nosnippet>106</a>
+<a href=#107 id=107 data-nosnippet>107</a>    <span class="doccomment">/// Parse the doc comments from the current start location.
+<a href=#108 id=108 data-nosnippet>108</a>    </span><span class="kw">fn </span>parse_docs(<span class="kw-2">&amp;mut </span><span class="self">self</span>, end: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;<a href="comment.rs.html#108">Comments</a>&gt; {
+<a href=#109 id=109 data-nosnippet>109</a>        <a class="self" href="#108">self</a>.<a href="#113-129">parse_docs_range</a>(<a class="self" href="#108">self</a>.context.doc_start_loc, <a href="#108">end</a>)
+<a href=#110 id=110 data-nosnippet>110</a>    }
+<a href=#111 id=111 data-nosnippet>111</a>
+<a href=#112 id=112 data-nosnippet>112</a>    <span class="doccomment">/// Parse doc comments from the within specified range.
+<a href=#113 id=113 data-nosnippet>113</a>    </span><span class="kw">fn </span>parse_docs_range(<span class="kw-2">&amp;mut </span><span class="self">self</span>, start: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>, end: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;<a href="comment.rs.html#108">Comments</a>&gt; {
+<a href=#114 id=114 data-nosnippet>114</a>        <span class="kw">let </span><span class="kw-2">mut </span>res = <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.vec.html">vec!</a>[];
+<a href=#115 id=115 data-nosnippet>115</a>        <span class="kw">for </span>comment <span class="kw">in </span>parse_doccomments(<span class="kw-2">&amp;</span><span class="self">self</span>.comments, start, end) {
+<a href=#116 id=116 data-nosnippet>116</a>            <span class="kw">match </span>comment {
+<a href=#117 id=117 data-nosnippet>117</a>                DocComment::Line { comment } =&gt; res.push(comment),
+<a href=#118 id=118 data-nosnippet>118</a>                DocComment::Block { comments } =&gt; res.extend(comments),
+<a href=#119 id=119 data-nosnippet>119</a>            }
+<a href=#120 id=120 data-nosnippet>120</a>        }
+<a href=#121 id=121 data-nosnippet>121</a>
+<a href=#122 id=122 data-nosnippet>122</a>        <span class="comment">// Filter out `@solidity` and empty tags
+<a href=#123 id=123 data-nosnippet>123</a>        // See https://docs.soliditylang.org/en/v0.8.17/assembly.html#memory-safety
+<a href=#124 id=124 data-nosnippet>124</a>        </span><span class="kw">let </span>res = <a href="#114">res</a>
+<a href=#125 id=125 data-nosnippet>125</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/collect/trait.IntoIterator.html#tymethod.into_iter">into_iter</a>()
+<a href=#126 id=126 data-nosnippet>126</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#tymethod.filter">filter</a>(|c| <a href="#126">c</a>.tag.<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim">trim</a>() != <span class="string">"solidity" </span>&amp;&amp; !<a href="#126">c</a>.tag.<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim">trim</a>().<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.is_empty">is_empty</a>())
+<a href=#127 id=127 data-nosnippet>127</a>            .collect_vec();
+<a href=#128 id=128 data-nosnippet>128</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a href="#124">res</a>.<a href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html#tymethod.into">into</a>())
+<a href=#129 id=129 data-nosnippet>129</a>    }
+<a href=#130 id=130 data-nosnippet>130</a>}
+<a href=#131 id=131 data-nosnippet>131</a>
+<a href=#132 id=132 data-nosnippet>132</a><span class="kw">impl </span>Visitor <span class="kw">for </span><a href="#31-42">Parser</a> {
+<a href=#133 id=133 data-nosnippet>133</a>    <span class="kw">type </span>Error = <a href="error.rs.html#7-14">ParserError</a>;
+<a href=#134 id=134 data-nosnippet>134</a>
+<a href=#135 id=135 data-nosnippet>135</a>    <span class="kw">fn </span>visit_source_unit(<span class="kw-2">&amp;mut </span><span class="self">self</span>, source_unit: <span class="kw-2">&amp;mut </span>SourceUnit) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#136 id=136 data-nosnippet>136</a>        <span class="kw">for </span>source <span class="kw">in </span>source_unit.<span class="number">0</span>.iter_mut() {
+<a href=#137 id=137 data-nosnippet>137</a>            <span class="kw">match </span>source {
+<a href=#138 id=138 data-nosnippet>138</a>                SourceUnitPart::ContractDefinition(def) =&gt; {
+<a href=#139 id=139 data-nosnippet>139</a>                    <span class="comment">// Create new contract parse item.
+<a href=#140 id=140 data-nosnippet>140</a>                    </span><span class="kw">let </span>contract =
+<a href=#141 id=141 data-nosnippet>141</a>                        <span class="self">self</span>.new_item(ParseSource::Contract(def.clone()), def.loc.start())<span class="question-mark">?</span>;
+<a href=#142 id=142 data-nosnippet>142</a>
+<a href=#143 id=143 data-nosnippet>143</a>                    <span class="comment">// Move the doc pointer to the contract location start.
+<a href=#144 id=144 data-nosnippet>144</a>                    </span><span class="self">self</span>.context.doc_start_loc = def.loc.start();
+<a href=#145 id=145 data-nosnippet>145</a>
+<a href=#146 id=146 data-nosnippet>146</a>                    <span class="comment">// Parse child elements with current contract as parent
+<a href=#147 id=147 data-nosnippet>147</a>                    </span><span class="kw">let </span>contract = <span class="self">self</span>.with_parent(contract, |doc| {
+<a href=#148 id=148 data-nosnippet>148</a>                        def.parts
+<a href=#149 id=149 data-nosnippet>149</a>                            .iter_mut()
+<a href=#150 id=150 data-nosnippet>150</a>                            .map(|d| d.visit(doc))
+<a href=#151 id=151 data-nosnippet>151</a>                            .collect::&lt;ParserResult&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#152 id=152 data-nosnippet>152</a>                        <span class="prelude-val">Ok</span>(())
+<a href=#153 id=153 data-nosnippet>153</a>                    })<span class="question-mark">?</span>;
+<a href=#154 id=154 data-nosnippet>154</a>
+<a href=#155 id=155 data-nosnippet>155</a>                    <span class="comment">// Move the doc pointer to the contract location end.
+<a href=#156 id=156 data-nosnippet>156</a>                    </span><span class="self">self</span>.context.doc_start_loc = def.loc.end();
+<a href=#157 id=157 data-nosnippet>157</a>
+<a href=#158 id=158 data-nosnippet>158</a>                    <span class="comment">// Add contract to the parsed items.
+<a href=#159 id=159 data-nosnippet>159</a>                    </span><span class="self">self</span>.items.push(contract);
+<a href=#160 id=160 data-nosnippet>160</a>                }
+<a href=#161 id=161 data-nosnippet>161</a>                SourceUnitPart::FunctionDefinition(func) =&gt; <span class="self">self</span>.visit_function(func)<span class="question-mark">?</span>,
+<a href=#162 id=162 data-nosnippet>162</a>                SourceUnitPart::EventDefinition(event) =&gt; <span class="self">self</span>.visit_event(event)<span class="question-mark">?</span>,
+<a href=#163 id=163 data-nosnippet>163</a>                SourceUnitPart::ErrorDefinition(error) =&gt; <span class="self">self</span>.visit_error(error)<span class="question-mark">?</span>,
+<a href=#164 id=164 data-nosnippet>164</a>                SourceUnitPart::StructDefinition(structure) =&gt; <span class="self">self</span>.visit_struct(structure)<span class="question-mark">?</span>,
+<a href=#165 id=165 data-nosnippet>165</a>                SourceUnitPart::EnumDefinition(enumerable) =&gt; <span class="self">self</span>.visit_enum(enumerable)<span class="question-mark">?</span>,
+<a href=#166 id=166 data-nosnippet>166</a>                SourceUnitPart::VariableDefinition(var) =&gt; <span class="self">self</span>.visit_var_definition(var)<span class="question-mark">?</span>,
+<a href=#167 id=167 data-nosnippet>167</a>                SourceUnitPart::TypeDefinition(ty) =&gt; <span class="self">self</span>.visit_type_definition(ty)<span class="question-mark">?</span>,
+<a href=#168 id=168 data-nosnippet>168</a>                <span class="kw">_ </span>=&gt; {}
+<a href=#169 id=169 data-nosnippet>169</a>            };
+<a href=#170 id=170 data-nosnippet>170</a>        }
+<a href=#171 id=171 data-nosnippet>171</a>
+<a href=#172 id=172 data-nosnippet>172</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#173 id=173 data-nosnippet>173</a>    }
+<a href=#174 id=174 data-nosnippet>174</a>
+<a href=#175 id=175 data-nosnippet>175</a>    <span class="kw">fn </span>visit_enum(<span class="kw-2">&amp;mut </span><span class="self">self</span>, enumerable: <span class="kw-2">&amp;mut </span>EnumDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#176 id=176 data-nosnippet>176</a>        <a class="self" href="#175">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#165">ParseSource::Enum</a>(<a href="#175">enumerable</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#175">enumerable</a>.loc)
+<a href=#177 id=177 data-nosnippet>177</a>    }
+<a href=#178 id=178 data-nosnippet>178</a>
+<a href=#179 id=179 data-nosnippet>179</a>    <span class="kw">fn </span>visit_var_definition(<span class="kw-2">&amp;mut </span><span class="self">self</span>, var: <span class="kw-2">&amp;mut </span>VariableDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#180 id=180 data-nosnippet>180</a>        <a class="self" href="#179">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#157">ParseSource::Variable</a>(<a href="#179">var</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#179">var</a>.loc)
+<a href=#181 id=181 data-nosnippet>181</a>    }
+<a href=#182 id=182 data-nosnippet>182</a>
+<a href=#183 id=183 data-nosnippet>183</a>    <span class="kw">fn </span>visit_function(<span class="kw-2">&amp;mut </span><span class="self">self</span>, func: <span class="kw-2">&amp;mut </span>FunctionDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="comment">// If the function parameter doesn't have a name, try to set it with
+<a href=#185 id=185 data-nosnippet>185</a>        // `@custom:name` tag if any was provided
+<a href=#186 id=186 data-nosnippet>186</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>start_loc = <a href="#183">func</a>.loc.start();
+<a href=#187 id=187 data-nosnippet>187</a>        <span class="kw">for </span>(loc, param) <span class="kw">in </span>func.params.iter_mut() {
+<a href=#188 id=188 data-nosnippet>188</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(param) = param {
+<a href=#189 id=189 data-nosnippet>189</a>                <span class="kw">if </span>param.name.is_none() {
+<a href=#190 id=190 data-nosnippet>190</a>                    <span class="kw">let </span>docs = <span class="self">self</span>.parse_docs_range(start_loc, loc.end())<span class="question-mark">?</span>;
+<a href=#191 id=191 data-nosnippet>191</a>                    <span class="kw">let </span>name_tag =
+<a href=#192 id=192 data-nosnippet>192</a>                        docs.iter().find(|c| c.tag == CommentTag::Custom(<span class="string">"name"</span>.to_owned()));
+<a href=#193 id=193 data-nosnippet>193</a>                    <span class="kw">if let </span><span class="prelude-val">Some</span>(name_tag) = name_tag {
+<a href=#194 id=194 data-nosnippet>194</a>                        <span class="kw">if let </span><span class="prelude-val">Some</span>(name) = name_tag.value.trim().split(<span class="string">' '</span>).next() {
+<a href=#195 id=195 data-nosnippet>195</a>                            param.name =
+<a href=#196 id=196 data-nosnippet>196</a>                                <span class="prelude-val">Some</span>(Identifier { loc: Loc::Implicit, name: name.to_owned() })
+<a href=#197 id=197 data-nosnippet>197</a>                        }
+<a href=#198 id=198 data-nosnippet>198</a>                    }
+<a href=#199 id=199 data-nosnippet>199</a>                }
+<a href=#200 id=200 data-nosnippet>200</a>            }
+<a href=#201 id=201 data-nosnippet>201</a>            start_loc = loc.end();
+<a href=#202 id=202 data-nosnippet>202</a>        }
+<a href=#203 id=203 data-nosnippet>203</a>
+<a href=#204 id=204 data-nosnippet>204</a>        <a class="self" href="#183">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#155">ParseSource::Function</a>(<a href="#183">func</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#183">func</a>.loc)
+<a href=#205 id=205 data-nosnippet>205</a>    }
+<a href=#206 id=206 data-nosnippet>206</a>
+<a href=#207 id=207 data-nosnippet>207</a>    <span class="kw">fn </span>visit_struct(<span class="kw-2">&amp;mut </span><span class="self">self</span>, structure: <span class="kw-2">&amp;mut </span>StructDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#208 id=208 data-nosnippet>208</a>        <a class="self" href="#207">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#163">ParseSource::Struct</a>(<a href="#207">structure</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#207">structure</a>.loc)
+<a href=#209 id=209 data-nosnippet>209</a>    }
+<a href=#210 id=210 data-nosnippet>210</a>
+<a href=#211 id=211 data-nosnippet>211</a>    <span class="kw">fn </span>visit_event(<span class="kw-2">&amp;mut </span><span class="self">self</span>, event: <span class="kw-2">&amp;mut </span>EventDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#212 id=212 data-nosnippet>212</a>        <a class="self" href="#211">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#159">ParseSource::Event</a>(<a href="#211">event</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#211">event</a>.loc)
+<a href=#213 id=213 data-nosnippet>213</a>    }
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a>    <span class="kw">fn </span>visit_error(<span class="kw-2">&amp;mut </span><span class="self">self</span>, error: <span class="kw-2">&amp;mut </span>ErrorDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#216 id=216 data-nosnippet>216</a>        <a class="self" href="#215">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#161">ParseSource::Error</a>(<a href="#215">error</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#215">error</a>.loc)
+<a href=#217 id=217 data-nosnippet>217</a>    }
+<a href=#218 id=218 data-nosnippet>218</a>
+<a href=#219 id=219 data-nosnippet>219</a>    <span class="kw">fn </span>visit_type_definition(<span class="kw-2">&amp;mut </span><span class="self">self</span>, def: <span class="kw-2">&amp;mut </span>TypeDefinition) -&gt; <a href="error.rs.html#17">ParserResult</a>&lt;()&gt; {
+<a href=#220 id=220 data-nosnippet>220</a>        <a class="self" href="#219">self</a>.<a href="#90-99">add_element_to_parent</a>(<a href="item.rs.html#167">ParseSource::Type</a>(<a href="#219">def</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>()), <a href="#219">def</a>.loc)
+<a href=#221 id=221 data-nosnippet>221</a>    }
+<a href=#222 id=222 data-nosnippet>222</a>}
+<a href=#223 id=223 data-nosnippet>223</a>
+<a href=#224 id=224 data-nosnippet>224</a><span class="attr">#[cfg(test)]
+<a href=#225 id=225 data-nosnippet>225</a></span><span class="kw">mod </span>tests {
+<a href=#226 id=226 data-nosnippet>226</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#227 id=227 data-nosnippet>227</a>    <span class="kw">use </span>solang_parser::parse;
+<a href=#228 id=228 data-nosnippet>228</a>
+<a href=#229 id=229 data-nosnippet>229</a>    <span class="attr">#[inline]
+<a href=#230 id=230 data-nosnippet>230</a>    </span><span class="kw">fn </span>parse_source(src: <span class="kw-2">&amp;</span>str) -&gt; Vec&lt;ParseItem&gt; {
+<a href=#231 id=231 data-nosnippet>231</a>        <span class="kw">let </span>(<span class="kw-2">mut </span>source, comments) = parse(src, <span class="number">0</span>).expect(<span class="string">"failed to parse source"</span>);
+<a href=#232 id=232 data-nosnippet>232</a>        <span class="kw">let </span><span class="kw-2">mut </span>doc = Parser::new(comments, src.to_owned());
+<a href=#233 id=233 data-nosnippet>233</a>        source.visit(<span class="kw-2">&amp;mut </span>doc).expect(<span class="string">"failed to visit source"</span>);
+<a href=#234 id=234 data-nosnippet>234</a>        doc.items()
+<a href=#235 id=235 data-nosnippet>235</a>    }
+<a href=#236 id=236 data-nosnippet>236</a>
+<a href=#237 id=237 data-nosnippet>237</a>    <span class="macro">macro_rules!</span> test_single_unit {
+<a href=#238 id=238 data-nosnippet>238</a>        (<span class="macro-nonterminal">$test</span>:ident, <span class="macro-nonterminal">$src</span>:expr, <span class="macro-nonterminal">$variant</span>:ident <span class="macro-nonterminal">$identity</span>:expr) =&gt; {
+<a href=#239 id=239 data-nosnippet>239</a>            <span class="attr">#[test]
+<a href=#240 id=240 data-nosnippet>240</a>            </span><span class="kw">fn </span><span class="macro-nonterminal">$test</span>() {
+<a href=#241 id=241 data-nosnippet>241</a>                <span class="kw">let </span>items = parse_source(<span class="macro-nonterminal">$src</span>);
+<a href=#242 id=242 data-nosnippet>242</a>                <span class="macro">assert_eq!</span>(items.len(), <span class="number">1</span>);
+<a href=#243 id=243 data-nosnippet>243</a>                <span class="kw">let </span>item = items.first().unwrap();
+<a href=#244 id=244 data-nosnippet>244</a>                <span class="macro">assert!</span>(item.comments.is_empty());
+<a href=#245 id=245 data-nosnippet>245</a>                <span class="macro">assert!</span>(item.children.is_empty());
+<a href=#246 id=246 data-nosnippet>246</a>                <span class="macro">assert_eq!</span>(item.source.ident(), <span class="macro-nonterminal">$identity</span>);
+<a href=#247 id=247 data-nosnippet>247</a>                <span class="macro">assert!</span>(<span class="macro">matches!</span>(item.source, ParseSource::<span class="macro-nonterminal">$variant</span>(<span class="kw">_</span>)));
+<a href=#248 id=248 data-nosnippet>248</a>            }
+<a href=#249 id=249 data-nosnippet>249</a>        };
+<a href=#250 id=250 data-nosnippet>250</a>    }
+<a href=#251 id=251 data-nosnippet>251</a>
+<a href=#252 id=252 data-nosnippet>252</a>    <span class="attr">#[test]
+<a href=#253 id=253 data-nosnippet>253</a>    </span><span class="kw">fn </span>empty_source() {
+<a href=#254 id=254 data-nosnippet>254</a>        <span class="macro">assert_eq!</span>(parse_source(<span class="string">""</span>), <span class="macro">vec!</span>[]);
+<a href=#255 id=255 data-nosnippet>255</a>    }
+<a href=#256 id=256 data-nosnippet>256</a>
+<a href=#257 id=257 data-nosnippet>257</a>    <span class="macro">test_single_unit!</span>(single_function, <span class="string">"function someFn() { }"</span>, Function <span class="string">"someFn"</span>);
+<a href=#258 id=258 data-nosnippet>258</a>    <span class="macro">test_single_unit!</span>(single_variable, <span class="string">"uint256 constant VALUE = 0;"</span>, Variable <span class="string">"VALUE"</span>);
+<a href=#259 id=259 data-nosnippet>259</a>    <span class="macro">test_single_unit!</span>(single_event, <span class="string">"event SomeEvent();"</span>, Event <span class="string">"SomeEvent"</span>);
+<a href=#260 id=260 data-nosnippet>260</a>    <span class="macro">test_single_unit!</span>(single_error, <span class="string">"error SomeError();"</span>, Error <span class="string">"SomeError"</span>);
+<a href=#261 id=261 data-nosnippet>261</a>    <span class="macro">test_single_unit!</span>(single_struct, <span class="string">"struct SomeStruct { }"</span>, Struct <span class="string">"SomeStruct"</span>);
+<a href=#262 id=262 data-nosnippet>262</a>    <span class="macro">test_single_unit!</span>(single_enum, <span class="string">"enum SomeEnum { SOME, OTHER }"</span>, Enum <span class="string">"SomeEnum"</span>);
+<a href=#263 id=263 data-nosnippet>263</a>    <span class="macro">test_single_unit!</span>(single_contract, <span class="string">"contract Contract { }"</span>, Contract <span class="string">"Contract"</span>);
+<a href=#264 id=264 data-nosnippet>264</a>
+<a href=#265 id=265 data-nosnippet>265</a>    <span class="attr">#[test]
+<a href=#266 id=266 data-nosnippet>266</a>    </span><span class="kw">fn </span>multiple_shallow_contracts() {
+<a href=#267 id=267 data-nosnippet>267</a>        <span class="kw">let </span>items = parse_source(
+<a href=#268 id=268 data-nosnippet>268</a>            <span class="string">r"
+<a href=#269 id=269 data-nosnippet>269</a>            contract A { }
+<a href=#270 id=270 data-nosnippet>270</a>            contract B { }
+<a href=#271 id=271 data-nosnippet>271</a>            contract C { }
+<a href=#272 id=272 data-nosnippet>272</a>        "</span>,
+<a href=#273 id=273 data-nosnippet>273</a>        );
+<a href=#274 id=274 data-nosnippet>274</a>        <span class="macro">assert_eq!</span>(items.len(), <span class="number">3</span>);
+<a href=#275 id=275 data-nosnippet>275</a>
+<a href=#276 id=276 data-nosnippet>276</a>        <span class="kw">let </span>first_item = items.first().unwrap();
+<a href=#277 id=277 data-nosnippet>277</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(first_item.source, ParseSource::Contract(<span class="kw">_</span>)));
+<a href=#278 id=278 data-nosnippet>278</a>        <span class="macro">assert_eq!</span>(first_item.source.ident(), <span class="string">"A"</span>);
+<a href=#279 id=279 data-nosnippet>279</a>
+<a href=#280 id=280 data-nosnippet>280</a>        <span class="kw">let </span>first_item = items.get(<span class="number">1</span>).unwrap();
+<a href=#281 id=281 data-nosnippet>281</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(first_item.source, ParseSource::Contract(<span class="kw">_</span>)));
+<a href=#282 id=282 data-nosnippet>282</a>        <span class="macro">assert_eq!</span>(first_item.source.ident(), <span class="string">"B"</span>);
+<a href=#283 id=283 data-nosnippet>283</a>
+<a href=#284 id=284 data-nosnippet>284</a>        <span class="kw">let </span>first_item = items.get(<span class="number">2</span>).unwrap();
+<a href=#285 id=285 data-nosnippet>285</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(first_item.source, ParseSource::Contract(<span class="kw">_</span>)));
+<a href=#286 id=286 data-nosnippet>286</a>        <span class="macro">assert_eq!</span>(first_item.source.ident(), <span class="string">"C"</span>);
+<a href=#287 id=287 data-nosnippet>287</a>    }
+<a href=#288 id=288 data-nosnippet>288</a>
+<a href=#289 id=289 data-nosnippet>289</a>    <span class="attr">#[test]
+<a href=#290 id=290 data-nosnippet>290</a>    </span><span class="kw">fn </span>contract_with_children_items() {
+<a href=#291 id=291 data-nosnippet>291</a>        <span class="kw">let </span>items = parse_source(
+<a href=#292 id=292 data-nosnippet>292</a>            <span class="string">r"
+<a href=#293 id=293 data-nosnippet>293</a>            event TopLevelEvent();
+<a href=#294 id=294 data-nosnippet>294</a>
+<a href=#295 id=295 data-nosnippet>295</a>            contract Contract {
+<a href=#296 id=296 data-nosnippet>296</a>                event ContractEvent();
+<a href=#297 id=297 data-nosnippet>297</a>                error ContractError();
+<a href=#298 id=298 data-nosnippet>298</a>                struct ContractStruct { }
+<a href=#299 id=299 data-nosnippet>299</a>                enum ContractEnum { }
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a>                uint256 constant CONTRACT_CONSTANT;
+<a href=#302 id=302 data-nosnippet>302</a>                bool contractVar;
+<a href=#303 id=303 data-nosnippet>303</a>
+<a href=#304 id=304 data-nosnippet>304</a>                function contractFunction(uint256) external returns (uint256) {
+<a href=#305 id=305 data-nosnippet>305</a>                    bool localVar; // must be ignored
+<a href=#306 id=306 data-nosnippet>306</a>                }
+<a href=#307 id=307 data-nosnippet>307</a>            }
+<a href=#308 id=308 data-nosnippet>308</a>        "</span>,
+<a href=#309 id=309 data-nosnippet>309</a>        );
+<a href=#310 id=310 data-nosnippet>310</a>
+<a href=#311 id=311 data-nosnippet>311</a>        <span class="macro">assert_eq!</span>(items.len(), <span class="number">2</span>);
+<a href=#312 id=312 data-nosnippet>312</a>
+<a href=#313 id=313 data-nosnippet>313</a>        <span class="kw">let </span>event = items.first().unwrap();
+<a href=#314 id=314 data-nosnippet>314</a>        <span class="macro">assert!</span>(event.comments.is_empty());
+<a href=#315 id=315 data-nosnippet>315</a>        <span class="macro">assert!</span>(event.children.is_empty());
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="macro">assert_eq!</span>(event.source.ident(), <span class="string">"TopLevelEvent"</span>);
+<a href=#317 id=317 data-nosnippet>317</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(event.source, ParseSource::Event(<span class="kw">_</span>)));
+<a href=#318 id=318 data-nosnippet>318</a>
+<a href=#319 id=319 data-nosnippet>319</a>        <span class="kw">let </span>contract = items.get(<span class="number">1</span>).unwrap();
+<a href=#320 id=320 data-nosnippet>320</a>        <span class="macro">assert!</span>(contract.comments.is_empty());
+<a href=#321 id=321 data-nosnippet>321</a>        <span class="macro">assert_eq!</span>(contract.children.len(), <span class="number">7</span>);
+<a href=#322 id=322 data-nosnippet>322</a>        <span class="macro">assert_eq!</span>(contract.source.ident(), <span class="string">"Contract"</span>);
+<a href=#323 id=323 data-nosnippet>323</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(contract.source, ParseSource::Contract(<span class="kw">_</span>)));
+<a href=#324 id=324 data-nosnippet>324</a>        <span class="macro">assert!</span>(contract.children.iter().all(|ch| ch.children.is_empty()));
+<a href=#325 id=325 data-nosnippet>325</a>        <span class="macro">assert!</span>(contract.children.iter().all(|ch| ch.comments.is_empty()));
+<a href=#326 id=326 data-nosnippet>326</a>    }
+<a href=#327 id=327 data-nosnippet>327</a>
+<a href=#328 id=328 data-nosnippet>328</a>    <span class="attr">#[test]
+<a href=#329 id=329 data-nosnippet>329</a>    </span><span class="kw">fn </span>contract_with_fallback() {
+<a href=#330 id=330 data-nosnippet>330</a>        <span class="kw">let </span>items = parse_source(
+<a href=#331 id=331 data-nosnippet>331</a>            <span class="string">r"
+<a href=#332 id=332 data-nosnippet>332</a>            contract Contract {
+<a href=#333 id=333 data-nosnippet>333</a>                fallback() external payable {}
+<a href=#334 id=334 data-nosnippet>334</a>            }
+<a href=#335 id=335 data-nosnippet>335</a>        "</span>,
+<a href=#336 id=336 data-nosnippet>336</a>        );
+<a href=#337 id=337 data-nosnippet>337</a>
+<a href=#338 id=338 data-nosnippet>338</a>        <span class="macro">assert_eq!</span>(items.len(), <span class="number">1</span>);
+<a href=#339 id=339 data-nosnippet>339</a>
+<a href=#340 id=340 data-nosnippet>340</a>        <span class="kw">let </span>contract = items.first().unwrap();
+<a href=#341 id=341 data-nosnippet>341</a>        <span class="macro">assert!</span>(contract.comments.is_empty());
+<a href=#342 id=342 data-nosnippet>342</a>        <span class="macro">assert_eq!</span>(contract.children.len(), <span class="number">1</span>);
+<a href=#343 id=343 data-nosnippet>343</a>        <span class="macro">assert_eq!</span>(contract.source.ident(), <span class="string">"Contract"</span>);
+<a href=#344 id=344 data-nosnippet>344</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(contract.source, ParseSource::Contract(<span class="kw">_</span>)));
+<a href=#345 id=345 data-nosnippet>345</a>
+<a href=#346 id=346 data-nosnippet>346</a>        <span class="kw">let </span>fallback = contract.children.first().unwrap();
+<a href=#347 id=347 data-nosnippet>347</a>        <span class="macro">assert_eq!</span>(fallback.source.ident(), <span class="string">"fallback"</span>);
+<a href=#348 id=348 data-nosnippet>348</a>        <span class="macro">assert!</span>(<span class="macro">matches!</span>(fallback.source, ParseSource::Function(<span class="kw">_</span>)));
+<a href=#349 id=349 data-nosnippet>349</a>    }
+<a href=#350 id=350 data-nosnippet>350</a>
+<a href=#351 id=351 data-nosnippet>351</a>    <span class="comment">// TODO: test regular doc comments &amp; natspec
+<a href=#352 id=352 data-nosnippet>352</a></span>}</code></pre></div></section></main></body></html>

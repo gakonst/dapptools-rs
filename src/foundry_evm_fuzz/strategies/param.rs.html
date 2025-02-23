@@ -1,0 +1,254 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/evm/fuzz/src/strategies/param.rs`."><title>param.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-6c3ea77c.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="foundry_evm_fuzz" data-themes="" data-resource-suffix="" data-rustdoc-version="1.87.0-nightly (46420c960 2025-02-22)" data-channel="nightly" data-search-js="search-f7327375.js" data-settings-js="settings-6dad6058.js" ><script src="../../../static.files/storage-3a5871a4.js"></script><script defer src="../../../static.files/src-script-b8d3f215.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-5332ae0c.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">foundry_evm_fuzz/strategies/</div>param.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span><a href="state.rs.html#28-32"><span class="kw">super</span>::state::EvmFuzzState</a>;
+<a href=#2 id=2 data-nosnippet>2</a><span class="kw">use </span>alloy_dyn_abi::{DynSolType, DynSolValue};
+<a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>alloy_primitives::{Address, B256, I256, U256};
+<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>proptest::prelude::<span class="kw-2">*</span>;
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span>rand::{<a href="https://rust-random.github.io/rand/rand/rngs/std/struct.StdRng.html">rngs::StdRng</a>, <a href="https://rust-random.github.io/rand/rand_core/trait.SeedableRng.html">SeedableRng</a>};
+<a href=#6 id=6 data-nosnippet>6</a>
+<a href=#7 id=7 data-nosnippet>7</a><span class="doccomment">/// The max length of arrays we fuzz for is 256.
+<a href=#8 id=8 data-nosnippet>8</a></span><span class="kw">const </span><a href="../../../foundry_evm_fuzz/strategies/param/constant.MAX_ARRAY_LEN.html">MAX_ARRAY_LEN</a>: <a href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a> = <span class="number">256</span>;
+<a href=#9 id=9 data-nosnippet>9</a>
+<a href=#10 id=10 data-nosnippet>10</a><span class="doccomment">/// Given a parameter type, returns a strategy for generating values for that type.
+<a href=#11 id=11 data-nosnippet>11</a>///
+<a href=#12 id=12 data-nosnippet>12</a>/// See [`fuzz_param_with_fixtures`] for more information.
+<a href=#13 id=13 data-nosnippet>13</a></span><span class="kw">pub fn </span><a href="../../../foundry_evm_fuzz/strategies/fn.fuzz_param.html">fuzz_param</a>(param: <span class="kw-2">&amp;</span>DynSolType) -&gt; BoxedStrategy&lt;DynSolValue&gt; {
+<a href=#14 id=14 data-nosnippet>14</a>    <a href="#40-105">fuzz_param_inner</a>(<a href="#13">param</a>, <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>)
+<a href=#15 id=15 data-nosnippet>15</a>}
+<a href=#16 id=16 data-nosnippet>16</a>
+<a href=#17 id=17 data-nosnippet>17</a><span class="doccomment">/// Given a parameter type and configured fixtures for param name, returns a strategy for generating
+<a href=#18 id=18 data-nosnippet>18</a>/// values for that type.
+<a href=#19 id=19 data-nosnippet>19</a>///
+<a href=#20 id=20 data-nosnippet>20</a>/// Fixtures can be currently generated for uint, int, address, bytes and
+<a href=#21 id=21 data-nosnippet>21</a>/// string types and are defined for parameter name.
+<a href=#22 id=22 data-nosnippet>22</a>/// For example, fixtures for parameter `owner` of type `address` can be defined in a function with
+<a href=#23 id=23 data-nosnippet>23</a>/// a `function fixture_owner() public returns (address[] memory)` signature.
+<a href=#24 id=24 data-nosnippet>24</a>///
+<a href=#25 id=25 data-nosnippet>25</a>/// Fixtures are matched on parameter name, hence fixtures defined in
+<a href=#26 id=26 data-nosnippet>26</a>/// `fixture_owner` function can be used in a fuzzed test function with a signature like
+<a href=#27 id=27 data-nosnippet>27</a>/// `function testFuzz_ownerAddress(address owner, uint amount)`.
+<a href=#28 id=28 data-nosnippet>28</a>///
+<a href=#29 id=29 data-nosnippet>29</a>/// Raises an error if all the fixture types are not of the same type as the input parameter.
+<a href=#30 id=30 data-nosnippet>30</a>///
+<a href=#31 id=31 data-nosnippet>31</a>/// Works with ABI Encoder v2 tuples.
+<a href=#32 id=32 data-nosnippet>32</a></span><span class="kw">pub fn </span><a href="../../../foundry_evm_fuzz/strategies/fn.fuzz_param_with_fixtures.html">fuzz_param_with_fixtures</a>(
+<a href=#33 id=33 data-nosnippet>33</a>    param: <span class="kw-2">&amp;</span>DynSolType,
+<a href=#34 id=34 data-nosnippet>34</a>    fixtures: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<span class="kw-2">&amp;</span>[DynSolValue]&gt;,
+<a href=#35 id=35 data-nosnippet>35</a>    name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#36 id=36 data-nosnippet>36</a>) -&gt; BoxedStrategy&lt;DynSolValue&gt; {
+<a href=#37 id=37 data-nosnippet>37</a>    <a href="#40-105">fuzz_param_inner</a>(<a href="#33">param</a>, <a href="#34">fixtures</a>.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.map">map</a>(|f| (<a href="#37">f</a>, <a href="#35">name</a>)))
+<a href=#38 id=38 data-nosnippet>38</a>}
+<a href=#39 id=39 data-nosnippet>39</a>
+<a href=#40 id=40 data-nosnippet>40</a><span class="kw">fn </span><a href="../../../foundry_evm_fuzz/strategies/param/fn.fuzz_param_inner.html">fuzz_param_inner</a>(
+<a href=#41 id=41 data-nosnippet>41</a>    param: <span class="kw-2">&amp;</span>DynSolType,
+<a href=#42 id=42 data-nosnippet>42</a>    <span class="kw-2">mut </span>fuzz_fixtures: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;(<span class="kw-2">&amp;</span>[DynSolValue], <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>)&gt;,
+<a href=#43 id=43 data-nosnippet>43</a>) -&gt; BoxedStrategy&lt;DynSolValue&gt; {
+<a href=#44 id=44 data-nosnippet>44</a>    <span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>((fixtures, name)) = <a href="#42">fuzz_fixtures</a> {
+<a href=#45 id=45 data-nosnippet>45</a>        <span class="kw">if </span>!fixtures.iter().all(|f| f.matches(param)) {
+<a href=#46 id=46 data-nosnippet>46</a>            <span class="macro">error!</span>(<span class="string">"fixtures for {name:?} do not match type {param}"</span>);
+<a href=#47 id=47 data-nosnippet>47</a>            <a href="#42">fuzz_fixtures</a> = <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>;
+<a href=#48 id=48 data-nosnippet>48</a>        }
+<a href=#49 id=49 data-nosnippet>49</a>    }
+<a href=#50 id=50 data-nosnippet>50</a>    <span class="kw">let </span>fuzz_fixtures = <a href="#42">fuzz_fixtures</a>.<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.map">map</a>(|(f, <span class="kw">_</span>)| <a href="#50">f</a>);
+<a href=#51 id=51 data-nosnippet>51</a>
+<a href=#52 id=52 data-nosnippet>52</a>    <span class="kw">let </span>value = || {
+<a href=#53 id=53 data-nosnippet>53</a>        <span class="kw">let </span>default_strategy = DynSolValue::type_strategy(<a href="#41">param</a>);
+<a href=#54 id=54 data-nosnippet>54</a>        <span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(fixtures) = <a href="#50">fuzz_fixtures</a> {
+<a href=#55 id=55 data-nosnippet>55</a>            <span class="macro">proptest::prop_oneof!</span>[
+<a href=#56 id=56 data-nosnippet>56</a>                <span class="number">50 </span>=&gt; {
+<a href=#57 id=57 data-nosnippet>57</a>                    <span class="kw">let </span>fixtures = fixtures.to_vec();
+<a href=#58 id=58 data-nosnippet>58</a>                    any::&lt;prop::sample::Index&gt;()
+<a href=#59 id=59 data-nosnippet>59</a>                        .prop_map(<span class="kw">move </span>|index| index.get(<span class="kw-2">&amp;</span>fixtures).clone())
+<a href=#60 id=60 data-nosnippet>60</a>                },
+<a href=#61 id=61 data-nosnippet>61</a>                <span class="number">50 </span>=&gt; default_strategy,
+<a href=#62 id=62 data-nosnippet>62</a>            ]
+<a href=#63 id=63 data-nosnippet>63</a>            .boxed()
+<a href=#64 id=64 data-nosnippet>64</a>        } <span class="kw">else </span>{
+<a href=#65 id=65 data-nosnippet>65</a>            <a href="#53">default_strategy</a>.boxed()
+<a href=#66 id=66 data-nosnippet>66</a>        }
+<a href=#67 id=67 data-nosnippet>67</a>    };
+<a href=#68 id=68 data-nosnippet>68</a>
+<a href=#69 id=69 data-nosnippet>69</a>    <span class="kw">match </span><span class="kw-2">*</span><a href="#41">param</a> {
+<a href=#70 id=70 data-nosnippet>70</a>        DynSolType::Address =&gt; <a href="#52">value</a>(),
+<a href=#71 id=71 data-nosnippet>71</a>        DynSolType::Int(n @ <span class="number">8</span>..=<span class="number">256</span>) =&gt; <a href="int.rs.html#113-121"><span class="kw">super</span>::IntStrategy::new</a>(<a href="#71">n</a>, <a href="#50">fuzz_fixtures</a>)
+<a href=#72 id=72 data-nosnippet>72</a>            .prop_map(<span class="kw">move </span>|x| DynSolValue::Int(<a href="#72">x</a>, <a href="#71">n</a>))
+<a href=#73 id=73 data-nosnippet>73</a>            .boxed(),
+<a href=#74 id=74 data-nosnippet>74</a>        DynSolType::Uint(n @ <span class="number">8</span>..=<span class="number">256</span>) =&gt; <a href="uint.rs.html#101-109"><span class="kw">super</span>::UintStrategy::new</a>(<a href="#74">n</a>, <a href="#50">fuzz_fixtures</a>)
+<a href=#75 id=75 data-nosnippet>75</a>            .prop_map(<span class="kw">move </span>|x| DynSolValue::Uint(<a href="#75">x</a>, <a href="#74">n</a>))
+<a href=#76 id=76 data-nosnippet>76</a>            .boxed(),
+<a href=#77 id=77 data-nosnippet>77</a>        DynSolType::Function | DynSolType::Bool =&gt; DynSolValue::type_strategy(<a href="#41">param</a>).boxed(),
+<a href=#78 id=78 data-nosnippet>78</a>        DynSolType::Bytes =&gt; <a href="#52">value</a>(),
+<a href=#79 id=79 data-nosnippet>79</a>        DynSolType::FixedBytes(_size @ <span class="number">1</span>..=<span class="number">32</span>) =&gt; <a href="#52">value</a>(),
+<a href=#80 id=80 data-nosnippet>80</a>        DynSolType::String =&gt; <a href="#52">value</a>()
+<a href=#81 id=81 data-nosnippet>81</a>            .prop_map(<span class="kw">move </span>|value| {
+<a href=#82 id=82 data-nosnippet>82</a>                DynSolValue::String(
+<a href=#83 id=83 data-nosnippet>83</a>                    <a href="#81">value</a>.as_str().<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.unwrap">unwrap</a>().<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim">trim</a>().<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim_end_matches">trim_end_matches</a>(<span class="string">'\0'</span>).<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>(),
+<a href=#84 id=84 data-nosnippet>84</a>                )
+<a href=#85 id=85 data-nosnippet>85</a>            })
+<a href=#86 id=86 data-nosnippet>86</a>            .boxed(),
+<a href=#87 id=87 data-nosnippet>87</a>        DynSolType::Tuple(<span class="kw-2">ref </span>params) =&gt; <a href="#87">params</a>
+<a href=#88 id=88 data-nosnippet>88</a>            .<a href="https://doc.rust-lang.org/nightly/core/foreigntype.slice.html#method.iter">iter</a>()
+<a href=#89 id=89 data-nosnippet>89</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#tymethod.map">map</a>(|param| <a href="#40-105">fuzz_param_inner</a>(<a href="#89">param</a>, <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>))
+<a href=#90 id=90 data-nosnippet>90</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#tymethod.collect">collect</a>::&lt;<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#91 id=91 data-nosnippet>91</a>            .prop_map(DynSolValue::Tuple)
+<a href=#92 id=92 data-nosnippet>92</a>            .boxed(),
+<a href=#93 id=93 data-nosnippet>93</a>        DynSolType::FixedArray(<span class="kw-2">ref </span>param, size) =&gt; {
+<a href=#94 id=94 data-nosnippet>94</a>            proptest::collection::vec(<a href="#40-105">fuzz_param_inner</a>(<a href="#93">param</a>, <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>), <a href="#93">size</a>)
+<a href=#95 id=95 data-nosnippet>95</a>                .prop_map(DynSolValue::FixedArray)
+<a href=#96 id=96 data-nosnippet>96</a>                .boxed()
+<a href=#97 id=97 data-nosnippet>97</a>        }
+<a href=#98 id=98 data-nosnippet>98</a>        DynSolType::Array(<span class="kw-2">ref </span>param) =&gt; {
+<a href=#99 id=99 data-nosnippet>99</a>            proptest::collection::vec(<a href="#40-105">fuzz_param_inner</a>(<a href="#98">param</a>, <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a>), <span class="number">0</span>..<a href="#8">MAX_ARRAY_LEN</a>)
+<a href=#100 id=100 data-nosnippet>100</a>                .prop_map(DynSolValue::Array)
+<a href=#101 id=101 data-nosnippet>101</a>                .boxed()
+<a href=#102 id=102 data-nosnippet>102</a>        }
+<a href=#103 id=103 data-nosnippet>103</a>        <span class="kw">_ </span>=&gt; <a class="macro" href="https://doc.rust-lang.org/nightly/std/macro.panic.html">panic!</a>(<span class="string">"unsupported fuzz param type: {param}"</span>),
+<a href=#104 id=104 data-nosnippet>104</a>    }
+<a href=#105 id=105 data-nosnippet>105</a>}
+<a href=#106 id=106 data-nosnippet>106</a>
+<a href=#107 id=107 data-nosnippet>107</a><span class="doccomment">/// Given a parameter type, returns a strategy for generating values for that type, given some EVM
+<a href=#108 id=108 data-nosnippet>108</a>/// fuzz state.
+<a href=#109 id=109 data-nosnippet>109</a>///
+<a href=#110 id=110 data-nosnippet>110</a>/// Works with ABI Encoder v2 tuples.
+<a href=#111 id=111 data-nosnippet>111</a></span><span class="kw">pub fn </span><a href="../../../foundry_evm_fuzz/strategies/fn.fuzz_param_from_state.html">fuzz_param_from_state</a>(
+<a href=#112 id=112 data-nosnippet>112</a>    param: <span class="kw-2">&amp;</span>DynSolType,
+<a href=#113 id=113 data-nosnippet>113</a>    state: <span class="kw-2">&amp;</span><a href="state.rs.html#28-32">EvmFuzzState</a>,
+<a href=#114 id=114 data-nosnippet>114</a>) -&gt; BoxedStrategy&lt;DynSolValue&gt; {
+<a href=#115 id=115 data-nosnippet>115</a>    <span class="comment">// Value strategy that uses the state.
+<a href=#116 id=116 data-nosnippet>116</a>    </span><span class="kw">let </span>value = || {
+<a href=#117 id=117 data-nosnippet>117</a>        <span class="kw">let </span>state = <a href="#113">state</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>();
+<a href=#118 id=118 data-nosnippet>118</a>        <span class="kw">let </span>param = <a href="#112">param</a>.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>();
+<a href=#119 id=119 data-nosnippet>119</a>        <span class="comment">// Generate a bias and use it to pick samples or non-persistent values (50 / 50).
+<a href=#120 id=120 data-nosnippet>120</a>        // Use `Index` instead of `Selector` when selecting a value to avoid iterating over the
+<a href=#121 id=121 data-nosnippet>121</a>        // entire dictionary.
+<a href=#122 id=122 data-nosnippet>122</a>        </span>any::&lt;(<a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>, prop::sample::Index)&gt;().prop_map(<span class="kw">move </span>|(bias, index)| {
+<a href=#123 id=123 data-nosnippet>123</a>            <span class="kw">let </span>state = <a href="#117">state</a>.<a href="state.rs.html#86-88">dictionary_read</a>();
+<a href=#124 id=124 data-nosnippet>124</a>            <span class="kw">let </span>values = <span class="kw">if </span>bias { <a href="#123">state</a>.<a href="state.rs.html#361-363">samples</a>(<span class="kw-2">&amp;</span><a href="#118">param</a>) } <span class="kw">else </span>{ <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None"><a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a> </a>}
+<a href=#125 id=125 data-nosnippet>125</a>                .<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.unwrap_or_else">unwrap_or_else</a>(|| <a href="#123">state</a>.<a href="state.rs.html#348-350">values</a>())
+<a href=#126 id=126 data-nosnippet>126</a>                .as_slice();
+<a href=#127 id=127 data-nosnippet>127</a>            <a href="#124">values</a>[<a href="#122">index</a>.index(<a href="#124">values</a>.len())]
+<a href=#128 id=128 data-nosnippet>128</a>        })
+<a href=#129 id=129 data-nosnippet>129</a>    };
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="comment">// Convert the value based on the parameter type
+<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="kw">match </span><span class="kw-2">*</span><a href="#112">param</a> {
+<a href=#133 id=133 data-nosnippet>133</a>        DynSolType::Address =&gt; {
+<a href=#134 id=134 data-nosnippet>134</a>            <span class="kw">let </span>deployed_libs = <a href="#113">state</a>.deployed_libs.<a href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone">clone</a>();
+<a href=#135 id=135 data-nosnippet>135</a>            <a href="#116">value</a>()
+<a href=#136 id=136 data-nosnippet>136</a>                .prop_map(<span class="kw">move </span>|value| {
+<a href=#137 id=137 data-nosnippet>137</a>                    <span class="kw">let </span><span class="kw-2">mut </span>fuzzed_addr = Address::from_word(<a href="#136">value</a>);
+<a href=#138 id=138 data-nosnippet>138</a>                    <span class="kw">if </span>!deployed_libs.contains(<span class="kw-2">&amp;</span>fuzzed_addr) {
+<a href=#139 id=139 data-nosnippet>139</a>                        DynSolValue::Address(<a href="#137">fuzzed_addr</a>)
+<a href=#140 id=140 data-nosnippet>140</a>                    } <span class="kw">else </span>{
+<a href=#141 id=141 data-nosnippet>141</a>                        <span class="kw">let </span><span class="kw-2">mut </span>rng = <a href="https://rust-random.github.io/rand/rand_core/trait.SeedableRng.html#tymethod.seed_from_u64">StdRng::seed_from_u64</a>(<span class="number">0x1337</span>); <span class="comment">// use deterministic rng
+<a href=#142 id=142 data-nosnippet>142</a>
+<a href=#143 id=143 data-nosnippet>143</a>                        // Do not use addresses of deployed libraries as fuzz input, instead return
+<a href=#144 id=144 data-nosnippet>144</a>                        // a deterministically random address. We cannot filter out this value (via
+<a href=#145 id=145 data-nosnippet>145</a>                        // `prop_filter_map`) as proptest can invoke this closure after test
+<a href=#146 id=146 data-nosnippet>146</a>                        // execution, and returning a `None` will cause it to panic.
+<a href=#147 id=147 data-nosnippet>147</a>                        // See &lt;https://github.com/foundry-rs/foundry/issues/9764&gt; and &lt;https://github.com/foundry-rs/foundry/issues/8639&gt;.
+<a href=#148 id=148 data-nosnippet>148</a>                        </span><span class="kw">loop </span>{
+<a href=#149 id=149 data-nosnippet>149</a>                            <a href="#137">fuzzed_addr</a>.randomize_with(<span class="kw-2">&amp;mut </span><a href="#141">rng</a>);
+<a href=#150 id=150 data-nosnippet>150</a>                            <span class="kw">if </span>!deployed_libs.contains(<span class="kw-2">&amp;</span>fuzzed_addr) {
+<a href=#151 id=151 data-nosnippet>151</a>                                <span class="kw">break</span>;
+<a href=#152 id=152 data-nosnippet>152</a>                            }
+<a href=#153 id=153 data-nosnippet>153</a>                        }
+<a href=#154 id=154 data-nosnippet>154</a>
+<a href=#155 id=155 data-nosnippet>155</a>                        DynSolValue::Address(<a href="#137">fuzzed_addr</a>)
+<a href=#156 id=156 data-nosnippet>156</a>                    }
+<a href=#157 id=157 data-nosnippet>157</a>                })
+<a href=#158 id=158 data-nosnippet>158</a>                .boxed()
+<a href=#159 id=159 data-nosnippet>159</a>        }
+<a href=#160 id=160 data-nosnippet>160</a>        DynSolType::Function =&gt; <a href="#116">value</a>()
+<a href=#161 id=161 data-nosnippet>161</a>            .prop_map(<span class="kw">move </span>|value| {
+<a href=#162 id=162 data-nosnippet>162</a>                DynSolValue::Function(alloy_primitives::Function::from_word(<a href="#161">value</a>))
+<a href=#163 id=163 data-nosnippet>163</a>            })
+<a href=#164 id=164 data-nosnippet>164</a>            .boxed(),
+<a href=#165 id=165 data-nosnippet>165</a>        DynSolType::FixedBytes(size @ <span class="number">1</span>..=<span class="number">32</span>) =&gt; <a href="#116">value</a>()
+<a href=#166 id=166 data-nosnippet>166</a>            .prop_map(<span class="kw">move </span>|<span class="kw-2">mut </span>v| {
+<a href=#167 id=167 data-nosnippet>167</a>                <a href="#166">v</a>[<a href="#165">size</a>..].<a href="https://doc.rust-lang.org/nightly/core/foreigntype.slice.html#method.fill">fill</a>(<span class="number">0</span>);
+<a href=#168 id=168 data-nosnippet>168</a>                DynSolValue::FixedBytes(<a href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html#tymethod.from">B256::from</a>(<a href="#166">v</a>), <a href="#165">size</a>)
+<a href=#169 id=169 data-nosnippet>169</a>            })
+<a href=#170 id=170 data-nosnippet>170</a>            .boxed(),
+<a href=#171 id=171 data-nosnippet>171</a>        DynSolType::Bool =&gt; DynSolValue::type_strategy(<a href="#112">param</a>).boxed(),
+<a href=#172 id=172 data-nosnippet>172</a>        DynSolType::String =&gt; DynSolValue::type_strategy(<a href="#112">param</a>)
+<a href=#173 id=173 data-nosnippet>173</a>            .prop_map(<span class="kw">move </span>|value| {
+<a href=#174 id=174 data-nosnippet>174</a>                DynSolValue::String(
+<a href=#175 id=175 data-nosnippet>175</a>                    <a href="#173">value</a>.as_str().<a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#method.unwrap">unwrap</a>().<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim">trim</a>().<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.trim_end_matches">trim_end_matches</a>(<span class="string">'\0'</span>).<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>(),
+<a href=#176 id=176 data-nosnippet>176</a>                )
+<a href=#177 id=177 data-nosnippet>177</a>            })
+<a href=#178 id=178 data-nosnippet>178</a>            .boxed(),
+<a href=#179 id=179 data-nosnippet>179</a>        DynSolType::Bytes =&gt; {
+<a href=#180 id=180 data-nosnippet>180</a>            <a href="#116">value</a>().prop_map(<span class="kw">move </span>|value| DynSolValue::Bytes(<a href="#180">value</a>.<span class="number">0</span>.<a href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html#tymethod.into">into</a>())).boxed()
+<a href=#181 id=181 data-nosnippet>181</a>        }
+<a href=#182 id=182 data-nosnippet>182</a>        DynSolType::Int(n @ <span class="number">8</span>..=<span class="number">256</span>) =&gt; <span class="kw">match </span><a href="#182">n</a> / <span class="number">8 </span>{
+<a href=#183 id=183 data-nosnippet>183</a>            <span class="number">32 </span>=&gt; <a href="#116">value</a>()
+<a href=#184 id=184 data-nosnippet>184</a>                .prop_map(<span class="kw">move </span>|value| DynSolValue::Int(I256::from_raw(<a href="#184">value</a>.<a href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html#tymethod.into">into</a>()), <span class="number">256</span>))
+<a href=#185 id=185 data-nosnippet>185</a>                .boxed(),
+<a href=#186 id=186 data-nosnippet>186</a>            <span class="number">1</span>..=<span class="number">31 </span>=&gt; <a href="#116">value</a>()
+<a href=#187 id=187 data-nosnippet>187</a>                .prop_map(<span class="kw">move </span>|value| {
+<a href=#188 id=188 data-nosnippet>188</a>                    <span class="comment">// Generate a uintN in the correct range, then shift it to the range of intN
+<a href=#189 id=189 data-nosnippet>189</a>                    // by subtracting 2^(N-1)
+<a href=#190 id=190 data-nosnippet>190</a>                    </span><span class="kw">let </span>uint = U256::from_be_bytes(<a href="#187">value</a>.<span class="number">0</span>) % U256::from(<span class="number">1</span>).wrapping_shl(<a href="#182">n</a>);
+<a href=#191 id=191 data-nosnippet>191</a>                    <span class="kw">let </span>max_int_plus1 = U256::from(<span class="number">1</span>).wrapping_shl(<a href="#182">n</a> - <span class="number">1</span>);
+<a href=#192 id=192 data-nosnippet>192</a>                    <span class="kw">let </span>num = I256::from_raw(<a href="#190">uint</a>.wrapping_sub(<a href="#191">max_int_plus1</a>));
+<a href=#193 id=193 data-nosnippet>193</a>                    DynSolValue::Int(<a href="#192">num</a>, <a href="#182">n</a>)
+<a href=#194 id=194 data-nosnippet>194</a>                })
+<a href=#195 id=195 data-nosnippet>195</a>                .boxed(),
+<a href=#196 id=196 data-nosnippet>196</a>            <span class="kw">_ </span>=&gt; <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.unreachable.html">unreachable!</a>(),
+<a href=#197 id=197 data-nosnippet>197</a>        },
+<a href=#198 id=198 data-nosnippet>198</a>        DynSolType::Uint(n @ <span class="number">8</span>..=<span class="number">256</span>) =&gt; <span class="kw">match </span><a href="#198">n</a> / <span class="number">8 </span>{
+<a href=#199 id=199 data-nosnippet>199</a>            <span class="number">32 </span>=&gt; <a href="#116">value</a>()
+<a href=#200 id=200 data-nosnippet>200</a>                .prop_map(<span class="kw">move </span>|value| DynSolValue::Uint(U256::from_be_bytes(<a href="#200">value</a>.<span class="number">0</span>), <span class="number">256</span>))
+<a href=#201 id=201 data-nosnippet>201</a>                .boxed(),
+<a href=#202 id=202 data-nosnippet>202</a>            <span class="number">1</span>..=<span class="number">31 </span>=&gt; <a href="#116">value</a>()
+<a href=#203 id=203 data-nosnippet>203</a>                .prop_map(<span class="kw">move </span>|value| {
+<a href=#204 id=204 data-nosnippet>204</a>                    <span class="kw">let </span>uint = U256::from_be_bytes(<a href="#203">value</a>.<span class="number">0</span>) % U256::from(<span class="number">1</span>).wrapping_shl(<a href="#198">n</a>);
+<a href=#205 id=205 data-nosnippet>205</a>                    DynSolValue::Uint(<a href="#204">uint</a>, <a href="#198">n</a>)
+<a href=#206 id=206 data-nosnippet>206</a>                })
+<a href=#207 id=207 data-nosnippet>207</a>                .boxed(),
+<a href=#208 id=208 data-nosnippet>208</a>            <span class="kw">_ </span>=&gt; <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.unreachable.html">unreachable!</a>(),
+<a href=#209 id=209 data-nosnippet>209</a>        },
+<a href=#210 id=210 data-nosnippet>210</a>        DynSolType::Tuple(<span class="kw-2">ref </span>params) =&gt; <a href="#210">params</a>
+<a href=#211 id=211 data-nosnippet>211</a>            .<a href="https://doc.rust-lang.org/nightly/core/foreigntype.slice.html#method.iter">iter</a>()
+<a href=#212 id=212 data-nosnippet>212</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#tymethod.map">map</a>(|p| <a href="#111-228">fuzz_param_from_state</a>(<a href="#212">p</a>, <a href="#113">state</a>))
+<a href=#213 id=213 data-nosnippet>213</a>            .<a href="https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#tymethod.collect">collect</a>::&lt;<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#214 id=214 data-nosnippet>214</a>            .prop_map(DynSolValue::Tuple)
+<a href=#215 id=215 data-nosnippet>215</a>            .boxed(),
+<a href=#216 id=216 data-nosnippet>216</a>        DynSolType::FixedArray(<span class="kw-2">ref </span>param, size) =&gt; {
+<a href=#217 id=217 data-nosnippet>217</a>            proptest::collection::vec(<a href="#111-228">fuzz_param_from_state</a>(<a href="#216">param</a>, <a href="#113">state</a>), <a href="#216">size</a>)
+<a href=#218 id=218 data-nosnippet>218</a>                .prop_map(DynSolValue::FixedArray)
+<a href=#219 id=219 data-nosnippet>219</a>                .boxed()
+<a href=#220 id=220 data-nosnippet>220</a>        }
+<a href=#221 id=221 data-nosnippet>221</a>        DynSolType::Array(<span class="kw-2">ref </span>param) =&gt; {
+<a href=#222 id=222 data-nosnippet>222</a>            proptest::collection::vec(<a href="#111-228">fuzz_param_from_state</a>(<a href="#221">param</a>, <a href="#113">state</a>), <span class="number">0</span>..<a href="#8">MAX_ARRAY_LEN</a>)
+<a href=#223 id=223 data-nosnippet>223</a>                .prop_map(DynSolValue::Array)
+<a href=#224 id=224 data-nosnippet>224</a>                .boxed()
+<a href=#225 id=225 data-nosnippet>225</a>        }
+<a href=#226 id=226 data-nosnippet>226</a>        <span class="kw">_ </span>=&gt; <a class="macro" href="https://doc.rust-lang.org/nightly/std/macro.panic.html">panic!</a>(<span class="string">"unsupported fuzz param type: {param}"</span>),
+<a href=#227 id=227 data-nosnippet>227</a>    }
+<a href=#228 id=228 data-nosnippet>228</a>}
+<a href=#229 id=229 data-nosnippet>229</a>
+<a href=#230 id=230 data-nosnippet>230</a><span class="attr">#[cfg(test)]
+<a href=#231 id=231 data-nosnippet>231</a></span><span class="kw">mod </span>tests {
+<a href=#232 id=232 data-nosnippet>232</a>    <span class="kw">use crate</span>::{
+<a href=#233 id=233 data-nosnippet>233</a>        strategies::{fuzz_calldata, fuzz_calldata_from_state, EvmFuzzState},
+<a href=#234 id=234 data-nosnippet>234</a>        FuzzFixtures,
+<a href=#235 id=235 data-nosnippet>235</a>    };
+<a href=#236 id=236 data-nosnippet>236</a>    <span class="kw">use </span>foundry_common::abi::get_func;
+<a href=#237 id=237 data-nosnippet>237</a>    <span class="kw">use </span>foundry_config::FuzzDictionaryConfig;
+<a href=#238 id=238 data-nosnippet>238</a>    <span class="kw">use </span>revm::db::{CacheDB, EmptyDB};
+<a href=#239 id=239 data-nosnippet>239</a>
+<a href=#240 id=240 data-nosnippet>240</a>    <span class="attr">#[test]
+<a href=#241 id=241 data-nosnippet>241</a>    </span><span class="kw">fn </span>can_fuzz_array() {
+<a href=#242 id=242 data-nosnippet>242</a>        <span class="kw">let </span>f = <span class="string">"testArray(uint64[2] calldata values)"</span>;
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>func = get_func(f).unwrap();
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="kw">let </span>db = CacheDB::new(EmptyDB::default());
+<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">let </span>state = EvmFuzzState::new(<span class="kw-2">&amp;</span>db, FuzzDictionaryConfig::default(), <span class="kw-2">&amp;</span>[]);
+<a href=#246 id=246 data-nosnippet>246</a>        <span class="kw">let </span>strategy = <span class="macro">proptest::prop_oneof!</span>[
+<a href=#247 id=247 data-nosnippet>247</a>            <span class="number">60 </span>=&gt; fuzz_calldata(func.clone(), <span class="kw-2">&amp;</span>FuzzFixtures::default()),
+<a href=#248 id=248 data-nosnippet>248</a>            <span class="number">40 </span>=&gt; fuzz_calldata_from_state(func, <span class="kw-2">&amp;</span>state),
+<a href=#249 id=249 data-nosnippet>249</a>        ];
+<a href=#250 id=250 data-nosnippet>250</a>        <span class="kw">let </span>cfg = proptest::test_runner::Config { failure_persistence: <span class="prelude-val">None</span>, ..Default::default() };
+<a href=#251 id=251 data-nosnippet>251</a>        <span class="kw">let </span><span class="kw-2">mut </span>runner = proptest::test_runner::TestRunner::new(cfg);
+<a href=#252 id=252 data-nosnippet>252</a>        <span class="kw">let _ </span>= runner.run(<span class="kw-2">&amp;</span>strategy, |<span class="kw">_</span>| <span class="prelude-val">Ok</span>(()));
+<a href=#253 id=253 data-nosnippet>253</a>    }
+<a href=#254 id=254 data-nosnippet>254</a>}</code></pre></div></section></main></body></html>

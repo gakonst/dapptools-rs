@@ -1,0 +1,188 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/evm/core/src/backend/in_memory_db.rs`."><title>in_memory_db.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-6c3ea77c.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="foundry_evm_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.87.0-nightly (46420c960 2025-02-22)" data-channel="nightly" data-search-js="search-f7327375.js" data-settings-js="settings-6dad6058.js" ><script src="../../../static.files/storage-3a5871a4.js"></script><script defer src="../../../static.files/src-script-b8d3f215.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-5332ae0c.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">foundry_evm_core/backend/</div>in_memory_db.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! In-memory database.
+<a href=#2 id=2 data-nosnippet>2</a>
+<a href=#3 id=3 data-nosnippet>3</a></span><span class="kw">use </span><a href="../state_snapshot.rs.html#8-11"><span class="kw">crate</span>::state_snapshot::StateSnapshots</a>;
+<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>alloy_primitives::{Address, B256, U256};
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><a href="../../../foundry_evm_core/backend/enum.DatabaseError.html">foundry_fork_db::DatabaseError</a>;
+<a href=#6 id=6 data-nosnippet>6</a><span class="kw">use </span>revm::{
+<a href=#7 id=7 data-nosnippet>7</a>    db::{CacheDB, DatabaseRef, EmptyDB},
+<a href=#8 id=8 data-nosnippet>8</a>    primitives::{Account, AccountInfo, Bytecode, HashMap <span class="kw">as </span>Map},
+<a href=#9 id=9 data-nosnippet>9</a>    Database, DatabaseCommit,
+<a href=#10 id=10 data-nosnippet>10</a>};
+<a href=#11 id=11 data-nosnippet>11</a>
+<a href=#12 id=12 data-nosnippet>12</a><span class="doccomment">/// Type alias for an in-memory database.
+<a href=#13 id=13 data-nosnippet>13</a>///
+<a href=#14 id=14 data-nosnippet>14</a>/// See [`EmptyDBWrapper`].
+<a href=#15 id=15 data-nosnippet>15</a></span><span class="kw">pub type </span><a href="../../../foundry_evm_core/backend/type.FoundryEvmInMemoryDB.html">FoundryEvmInMemoryDB</a> = CacheDB&lt;<a href="#97">EmptyDBWrapper</a>&gt;;
+<a href=#16 id=16 data-nosnippet>16</a>
+<a href=#17 id=17 data-nosnippet>17</a><span class="doccomment">/// In-memory [`Database`] for Anvil.
+<a href=#18 id=18 data-nosnippet>18</a>///
+<a href=#19 id=19 data-nosnippet>19</a>/// This acts like a wrapper type for [`FoundryEvmInMemoryDB`] but is capable of applying snapshots.
+<a href=#20 id=20 data-nosnippet>20</a></span><span class="attr">#[derive(Debug)]
+<a href=#21 id=21 data-nosnippet>21</a></span><span class="kw">pub struct </span><a href="../../../foundry_evm_core/backend/struct.MemDb.html">MemDb</a> {
+<a href=#22 id=22 data-nosnippet>22</a>    <span class="kw">pub </span>inner: <a href="#15">FoundryEvmInMemoryDB</a>,
+<a href=#23 id=23 data-nosnippet>23</a>    <span class="kw">pub </span>state_snapshots: <a href="../state_snapshot.rs.html#8-11">StateSnapshots</a>&lt;<a href="#15">FoundryEvmInMemoryDB</a>&gt;,
+<a href=#24 id=24 data-nosnippet>24</a>}
+<a href=#25 id=25 data-nosnippet>25</a>
+<a href=#26 id=26 data-nosnippet>26</a><span class="kw">impl </span><a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html">Default</a> <span class="kw">for </span><a href="#21-24">MemDb</a> {
+<a href=#27 id=27 data-nosnippet>27</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#28 id=28 data-nosnippet>28</a>        <span class="self">Self </span>{ inner: CacheDB::new(<a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">Default::default</a>()), state_snapshots: <a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">Default::default</a>() }
+<a href=#29 id=29 data-nosnippet>29</a>    }
+<a href=#30 id=30 data-nosnippet>30</a>}
+<a href=#31 id=31 data-nosnippet>31</a>
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">impl </span>DatabaseRef <span class="kw">for </span><a href="#21-24">MemDb</a> {
+<a href=#33 id=33 data-nosnippet>33</a>    <span class="kw">type </span>Error = <a href="../../../foundry_evm_core/backend/enum.DatabaseError.html">DatabaseError</a>;
+<a href=#34 id=34 data-nosnippet>34</a>
+<a href=#35 id=35 data-nosnippet>35</a>    <span class="kw">fn </span>basic_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, address: Address) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;AccountInfo&gt;, <span class="self">Self</span>::Error&gt; {
+<a href=#36 id=36 data-nosnippet>36</a>        DatabaseRef::basic_ref(<span class="kw-2">&amp;</span><a class="self" href="#35">self</a>.inner, <a href="#35">address</a>)
+<a href=#37 id=37 data-nosnippet>37</a>    }
+<a href=#38 id=38 data-nosnippet>38</a>
+<a href=#39 id=39 data-nosnippet>39</a>    <span class="kw">fn </span>code_by_hash_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, code_hash: B256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;Bytecode, <span class="self">Self</span>::Error&gt; {
+<a href=#40 id=40 data-nosnippet>40</a>        DatabaseRef::code_by_hash_ref(<span class="kw-2">&amp;</span><a class="self" href="#39">self</a>.inner, <a href="#39">code_hash</a>)
+<a href=#41 id=41 data-nosnippet>41</a>    }
+<a href=#42 id=42 data-nosnippet>42</a>
+<a href=#43 id=43 data-nosnippet>43</a>    <span class="kw">fn </span>storage_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, address: Address, index: U256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;U256, <span class="self">Self</span>::Error&gt; {
+<a href=#44 id=44 data-nosnippet>44</a>        DatabaseRef::storage_ref(<span class="kw-2">&amp;</span><a class="self" href="#43">self</a>.inner, <a href="#43">address</a>, <a href="#43">index</a>)
+<a href=#45 id=45 data-nosnippet>45</a>    }
+<a href=#46 id=46 data-nosnippet>46</a>
+<a href=#47 id=47 data-nosnippet>47</a>    <span class="kw">fn </span>block_hash_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <a href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;B256, <span class="self">Self</span>::Error&gt; {
+<a href=#48 id=48 data-nosnippet>48</a>        DatabaseRef::block_hash_ref(<span class="kw-2">&amp;</span><a class="self" href="#47">self</a>.inner, <a href="#47">number</a>)
+<a href=#49 id=49 data-nosnippet>49</a>    }
+<a href=#50 id=50 data-nosnippet>50</a>}
+<a href=#51 id=51 data-nosnippet>51</a>
+<a href=#52 id=52 data-nosnippet>52</a><span class="kw">impl </span>Database <span class="kw">for </span><a href="#21-24">MemDb</a> {
+<a href=#53 id=53 data-nosnippet>53</a>    <span class="kw">type </span>Error = <a href="../../../foundry_evm_core/backend/enum.DatabaseError.html">DatabaseError</a>;
+<a href=#54 id=54 data-nosnippet>54</a>
+<a href=#55 id=55 data-nosnippet>55</a>    <span class="kw">fn </span>basic(<span class="kw-2">&amp;mut </span><span class="self">self</span>, address: Address) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;AccountInfo&gt;, <span class="self">Self</span>::Error&gt; {
+<a href=#56 id=56 data-nosnippet>56</a>        <span class="comment">// Note: this will always return `Some(AccountInfo)`, See `EmptyDBWrapper`
+<a href=#57 id=57 data-nosnippet>57</a>        </span>Database::basic(<span class="kw-2">&amp;mut </span><a class="self" href="#55">self</a>.inner, <a href="#55">address</a>)
+<a href=#58 id=58 data-nosnippet>58</a>    }
+<a href=#59 id=59 data-nosnippet>59</a>
+<a href=#60 id=60 data-nosnippet>60</a>    <span class="kw">fn </span>code_by_hash(<span class="kw-2">&amp;mut </span><span class="self">self</span>, code_hash: B256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;Bytecode, <span class="self">Self</span>::Error&gt; {
+<a href=#61 id=61 data-nosnippet>61</a>        Database::code_by_hash(<span class="kw-2">&amp;mut </span><a class="self" href="#60">self</a>.inner, <a href="#60">code_hash</a>)
+<a href=#62 id=62 data-nosnippet>62</a>    }
+<a href=#63 id=63 data-nosnippet>63</a>
+<a href=#64 id=64 data-nosnippet>64</a>    <span class="kw">fn </span>storage(<span class="kw-2">&amp;mut </span><span class="self">self</span>, address: Address, index: U256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;U256, <span class="self">Self</span>::Error&gt; {
+<a href=#65 id=65 data-nosnippet>65</a>        Database::storage(<span class="kw-2">&amp;mut </span><a class="self" href="#64">self</a>.inner, <a href="#64">address</a>, <a href="#64">index</a>)
+<a href=#66 id=66 data-nosnippet>66</a>    }
+<a href=#67 id=67 data-nosnippet>67</a>
+<a href=#68 id=68 data-nosnippet>68</a>    <span class="kw">fn </span>block_hash(<span class="kw-2">&amp;mut </span><span class="self">self</span>, number: <a href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;B256, <span class="self">Self</span>::Error&gt; {
+<a href=#69 id=69 data-nosnippet>69</a>        Database::block_hash(<span class="kw-2">&amp;mut </span><a class="self" href="#68">self</a>.inner, <a href="#68">number</a>)
+<a href=#70 id=70 data-nosnippet>70</a>    }
+<a href=#71 id=71 data-nosnippet>71</a>}
+<a href=#72 id=72 data-nosnippet>72</a>
+<a href=#73 id=73 data-nosnippet>73</a><span class="kw">impl </span>DatabaseCommit <span class="kw">for </span><a href="#21-24">MemDb</a> {
+<a href=#74 id=74 data-nosnippet>74</a>    <span class="kw">fn </span>commit(<span class="kw-2">&amp;mut </span><span class="self">self</span>, changes: Map&lt;Address, Account&gt;) {
+<a href=#75 id=75 data-nosnippet>75</a>        DatabaseCommit::commit(<span class="kw-2">&amp;mut </span><a class="self" href="#74">self</a>.inner, <a href="#74">changes</a>)
+<a href=#76 id=76 data-nosnippet>76</a>    }
+<a href=#77 id=77 data-nosnippet>77</a>}
+<a href=#78 id=78 data-nosnippet>78</a>
+<a href=#79 id=79 data-nosnippet>79</a><span class="doccomment">/// An empty database that always returns default values when queried.
+<a href=#80 id=80 data-nosnippet>80</a>///
+<a href=#81 id=81 data-nosnippet>81</a>/// This is just a simple wrapper for `revm::EmptyDB` but implements `DatabaseError` instead, this
+<a href=#82 id=82 data-nosnippet>82</a>/// way we can unify all different `Database` impls
+<a href=#83 id=83 data-nosnippet>83</a>///
+<a href=#84 id=84 data-nosnippet>84</a>/// This will also _always_ return `Some(AccountInfo)`:
+<a href=#85 id=85 data-nosnippet>85</a>///
+<a href=#86 id=86 data-nosnippet>86</a>/// The [`Database`] implementation for `CacheDB` manages an `AccountState` for the
+<a href=#87 id=87 data-nosnippet>87</a>/// `DbAccount`, this will be set to `AccountState::NotExisting` if the account does not exist yet.
+<a href=#88 id=88 data-nosnippet>88</a>/// This is because there's a distinction between "non-existing" and "empty",
+<a href=#89 id=89 data-nosnippet>89</a>/// see &lt;https://github.com/bluealloy/revm/blob/8f4348dc93022cffb3730d9db5d3ab1aad77676a/crates/revm/src/db/in_memory_db.rs#L81-L83&gt;.
+<a href=#90 id=90 data-nosnippet>90</a>/// If an account is `NotExisting`, `Database::basic_ref` will always return `None` for the
+<a href=#91 id=91 data-nosnippet>91</a>/// requested `AccountInfo`.
+<a href=#92 id=92 data-nosnippet>92</a>///
+<a href=#93 id=93 data-nosnippet>93</a>/// To prevent this, we ensure that a missing account is never marked as `NotExisting` by always
+<a href=#94 id=94 data-nosnippet>94</a>/// returning `Some` with this type, which will then insert a default [`AccountInfo`] instead
+<a href=#95 id=95 data-nosnippet>95</a>/// of one marked as `AccountState::NotExisting`.
+<a href=#96 id=96 data-nosnippet>96</a></span><span class="attr">#[derive(Clone, Debug, Default)]
+<a href=#97 id=97 data-nosnippet>97</a></span><span class="kw">pub struct </span><a href="../../../foundry_evm_core/backend/struct.EmptyDBWrapper.html">EmptyDBWrapper</a>(EmptyDB);
+<a href=#98 id=98 data-nosnippet>98</a>
+<a href=#99 id=99 data-nosnippet>99</a><span class="kw">impl </span>DatabaseRef <span class="kw">for </span><a href="#97">EmptyDBWrapper</a> {
+<a href=#100 id=100 data-nosnippet>100</a>    <span class="kw">type </span>Error = <a href="../../../foundry_evm_core/backend/enum.DatabaseError.html">DatabaseError</a>;
+<a href=#101 id=101 data-nosnippet>101</a>
+<a href=#102 id=102 data-nosnippet>102</a>    <span class="kw">fn </span>basic_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, _address: Address) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;<a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;AccountInfo&gt;, <span class="self">Self</span>::Error&gt; {
+<a href=#103 id=103 data-nosnippet>103</a>        <span class="comment">// Note: this will always return `Some(AccountInfo)`, for the reason explained above
+<a href=#104 id=104 data-nosnippet>104</a>        </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(<a href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html#tymethod.default">AccountInfo::default</a>()))
+<a href=#105 id=105 data-nosnippet>105</a>    }
+<a href=#106 id=106 data-nosnippet>106</a>
+<a href=#107 id=107 data-nosnippet>107</a>    <span class="kw">fn </span>code_by_hash_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, code_hash: B256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;Bytecode, <span class="self">Self</span>::Error&gt; {
+<a href=#108 id=108 data-nosnippet>108</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a class="self" href="#107">self</a>.<span class="number">0</span>.code_by_hash_ref(<a href="#107">code_hash</a>)<span class="question-mark">?</span>)
+<a href=#109 id=109 data-nosnippet>109</a>    }
+<a href=#110 id=110 data-nosnippet>110</a>    <span class="kw">fn </span>storage_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, address: Address, index: U256) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;U256, <span class="self">Self</span>::Error&gt; {
+<a href=#111 id=111 data-nosnippet>111</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a class="self" href="#110">self</a>.<span class="number">0</span>.storage_ref(<a href="#110">address</a>, <a href="#110">index</a>)<span class="question-mark">?</span>)
+<a href=#112 id=112 data-nosnippet>112</a>    }
+<a href=#113 id=113 data-nosnippet>113</a>
+<a href=#114 id=114 data-nosnippet>114</a>    <span class="kw">fn </span>block_hash_ref(<span class="kw-2">&amp;</span><span class="self">self</span>, number: <a href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a>) -&gt; <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html">Result</a>&lt;B256, <span class="self">Self</span>::Error&gt; {
+<a href=#115 id=115 data-nosnippet>115</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a class="self" href="#114">self</a>.<span class="number">0</span>.block_hash_ref(<a href="#114">number</a>)<span class="question-mark">?</span>)
+<a href=#116 id=116 data-nosnippet>116</a>    }
+<a href=#117 id=117 data-nosnippet>117</a>}
+<a href=#118 id=118 data-nosnippet>118</a>
+<a href=#119 id=119 data-nosnippet>119</a><span class="attr">#[cfg(test)]
+<a href=#120 id=120 data-nosnippet>120</a></span><span class="kw">mod </span>tests {
+<a href=#121 id=121 data-nosnippet>121</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#122 id=122 data-nosnippet>122</a>    <span class="kw">use </span>alloy_primitives::b256;
+<a href=#123 id=123 data-nosnippet>123</a>
+<a href=#124 id=124 data-nosnippet>124</a>    <span class="doccomment">/// Ensures the `Database(Ref)` implementation for `revm::CacheDB` works as expected
+<a href=#125 id=125 data-nosnippet>125</a>    ///
+<a href=#126 id=126 data-nosnippet>126</a>    /// Demonstrates how calling `Database::basic` works if an account does not exist
+<a href=#127 id=127 data-nosnippet>127</a>    </span><span class="attr">#[test]
+<a href=#128 id=128 data-nosnippet>128</a>    </span><span class="kw">fn </span>cache_db_insert_basic_non_existing() {
+<a href=#129 id=129 data-nosnippet>129</a>        <span class="kw">let </span><span class="kw-2">mut </span>db = CacheDB::new(EmptyDB::default());
+<a href=#130 id=130 data-nosnippet>130</a>        <span class="kw">let </span>address = Address::random();
+<a href=#131 id=131 data-nosnippet>131</a>        <span class="comment">// call `basic` on a non-existing account
+<a href=#132 id=132 data-nosnippet>132</a>        </span><span class="kw">let </span>info = Database::basic(<span class="kw-2">&amp;mut </span>db, address).unwrap();
+<a href=#133 id=133 data-nosnippet>133</a>        <span class="macro">assert!</span>(info.is_none());
+<a href=#134 id=134 data-nosnippet>134</a>        <span class="kw">let </span><span class="kw-2">mut </span>info = info.unwrap_or_default();
+<a href=#135 id=135 data-nosnippet>135</a>        info.balance = U256::from(<span class="number">500u64</span>);
+<a href=#136 id=136 data-nosnippet>136</a>
+<a href=#137 id=137 data-nosnippet>137</a>        <span class="comment">// insert the modified account info
+<a href=#138 id=138 data-nosnippet>138</a>        </span>db.insert_account_info(address, info);
+<a href=#139 id=139 data-nosnippet>139</a>
+<a href=#140 id=140 data-nosnippet>140</a>        <span class="comment">// when fetching again, the `AccountInfo` is still `None` because the state of the account
+<a href=#141 id=141 data-nosnippet>141</a>        // is `AccountState::NotExisting`, see &lt;https://github.com/bluealloy/revm/blob/8f4348dc93022cffb3730d9db5d3ab1aad77676a/crates/revm/src/db/in_memory_db.rs#L217-L226&gt;
+<a href=#142 id=142 data-nosnippet>142</a>        </span><span class="kw">let </span>info = Database::basic(<span class="kw-2">&amp;mut </span>db, address).unwrap();
+<a href=#143 id=143 data-nosnippet>143</a>        <span class="macro">assert!</span>(info.is_none());
+<a href=#144 id=144 data-nosnippet>144</a>    }
+<a href=#145 id=145 data-nosnippet>145</a>
+<a href=#146 id=146 data-nosnippet>146</a>    <span class="doccomment">/// Demonstrates how to insert a new account but not mark it as non-existing
+<a href=#147 id=147 data-nosnippet>147</a>    </span><span class="attr">#[test]
+<a href=#148 id=148 data-nosnippet>148</a>    </span><span class="kw">fn </span>cache_db_insert_basic_default() {
+<a href=#149 id=149 data-nosnippet>149</a>        <span class="kw">let </span><span class="kw-2">mut </span>db = CacheDB::new(EmptyDB::default());
+<a href=#150 id=150 data-nosnippet>150</a>        <span class="kw">let </span>address = Address::random();
+<a href=#151 id=151 data-nosnippet>151</a>
+<a href=#152 id=152 data-nosnippet>152</a>        <span class="comment">// We use `basic_ref` here to ensure that the account is not marked as `NotExisting`.
+<a href=#153 id=153 data-nosnippet>153</a>        </span><span class="kw">let </span>info = DatabaseRef::basic_ref(<span class="kw-2">&amp;</span>db, address).unwrap();
+<a href=#154 id=154 data-nosnippet>154</a>        <span class="macro">assert!</span>(info.is_none());
+<a href=#155 id=155 data-nosnippet>155</a>        <span class="kw">let </span><span class="kw-2">mut </span>info = info.unwrap_or_default();
+<a href=#156 id=156 data-nosnippet>156</a>        info.balance = U256::from(<span class="number">500u64</span>);
+<a href=#157 id=157 data-nosnippet>157</a>
+<a href=#158 id=158 data-nosnippet>158</a>        <span class="comment">// insert the modified account info
+<a href=#159 id=159 data-nosnippet>159</a>        </span>db.insert_account_info(address, info.clone());
+<a href=#160 id=160 data-nosnippet>160</a>
+<a href=#161 id=161 data-nosnippet>161</a>        <span class="kw">let </span>loaded = Database::basic(<span class="kw-2">&amp;mut </span>db, address).unwrap();
+<a href=#162 id=162 data-nosnippet>162</a>        <span class="macro">assert!</span>(loaded.is_some());
+<a href=#163 id=163 data-nosnippet>163</a>        <span class="macro">assert_eq!</span>(loaded.unwrap(), info)
+<a href=#164 id=164 data-nosnippet>164</a>    }
+<a href=#165 id=165 data-nosnippet>165</a>
+<a href=#166 id=166 data-nosnippet>166</a>    <span class="doccomment">/// Demonstrates that `Database::basic` for `MemDb` will always return the `AccountInfo`
+<a href=#167 id=167 data-nosnippet>167</a>    </span><span class="attr">#[test]
+<a href=#168 id=168 data-nosnippet>168</a>    </span><span class="kw">fn </span>mem_db_insert_basic_default() {
+<a href=#169 id=169 data-nosnippet>169</a>        <span class="kw">let </span><span class="kw-2">mut </span>db = MemDb::default();
+<a href=#170 id=170 data-nosnippet>170</a>        <span class="kw">let </span>address = Address::from_word(<span class="macro">b256!</span>(
+<a href=#171 id=171 data-nosnippet>171</a>            <span class="string">"000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045"
+<a href=#172 id=172 data-nosnippet>172</a>        </span>));
+<a href=#173 id=173 data-nosnippet>173</a>
+<a href=#174 id=174 data-nosnippet>174</a>        <span class="kw">let </span>info = Database::basic(<span class="kw-2">&amp;mut </span>db, address).unwrap();
+<a href=#175 id=175 data-nosnippet>175</a>        <span class="comment">// We know info exists, as MemDb always returns `Some(AccountInfo)` due to the
+<a href=#176 id=176 data-nosnippet>176</a>        // `EmptyDbWrapper`.
+<a href=#177 id=177 data-nosnippet>177</a>        </span><span class="macro">assert!</span>(info.is_some());
+<a href=#178 id=178 data-nosnippet>178</a>        <span class="kw">let </span><span class="kw-2">mut </span>info = info.unwrap();
+<a href=#179 id=179 data-nosnippet>179</a>        info.balance = U256::from(<span class="number">500u64</span>);
+<a href=#180 id=180 data-nosnippet>180</a>
+<a href=#181 id=181 data-nosnippet>181</a>        <span class="comment">// insert the modified account info
+<a href=#182 id=182 data-nosnippet>182</a>        </span>db.inner.insert_account_info(address, info.clone());
+<a href=#183 id=183 data-nosnippet>183</a>
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="kw">let </span>loaded = Database::basic(<span class="kw-2">&amp;mut </span>db, address).unwrap();
+<a href=#185 id=185 data-nosnippet>185</a>        <span class="macro">assert!</span>(loaded.is_some());
+<a href=#186 id=186 data-nosnippet>186</a>        <span class="macro">assert_eq!</span>(loaded.unwrap(), info)
+<a href=#187 id=187 data-nosnippet>187</a>    }
+<a href=#188 id=188 data-nosnippet>188</a>}</code></pre></div></section></main></body></html>

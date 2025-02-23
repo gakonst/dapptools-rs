@@ -1,0 +1,353 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/sol-macro-gen/src/sol_macro_gen.rs`."><title>sol_macro_gen.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-6c3ea77c.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="forge_sol_macro_gen" data-themes="" data-resource-suffix="" data-rustdoc-version="1.87.0-nightly (46420c960 2025-02-22)" data-channel="nightly" data-search-js="search-f7327375.js" data-settings-js="settings-6dad6058.js" ><script src="../../static.files/storage-3a5871a4.js"></script><script defer src="../../static.files/src-script-b8d3f215.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5332ae0c.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">forge_sol_macro_gen/</div>sol_macro_gen.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! SolMacroGen and MultiSolMacroGen
+<a href=#2 id=2 data-nosnippet>2</a>//!
+<a href=#3 id=3 data-nosnippet>3</a>//! This type encapsulates the logic for expansion of a Rust TokenStream from Solidity tokens. It
+<a href=#4 id=4 data-nosnippet>4</a>//! uses the `expand` method from `alloy_sol_macro_expander` underneath.
+<a href=#5 id=5 data-nosnippet>5</a>//!
+<a href=#6 id=6 data-nosnippet>6</a>//! It holds info such as `path` to the ABI file, `name` of the file and the rust binding being
+<a href=#7 id=7 data-nosnippet>7</a>//! generated, and lastly the `expansion` itself, i.e the Rust binding for the provided ABI.
+<a href=#8 id=8 data-nosnippet>8</a>//!
+<a href=#9 id=9 data-nosnippet>9</a>//! It contains methods to read the json abi, generate rust bindings from the abi and ultimately
+<a href=#10 id=10 data-nosnippet>10</a>//! write the bindings to a crate or modules.
+<a href=#11 id=11 data-nosnippet>11</a>
+<a href=#12 id=12 data-nosnippet>12</a></span><span class="kw">use </span>alloy_sol_macro_expander::expand::expand;
+<a href=#13 id=13 data-nosnippet>13</a><span class="kw">use </span>alloy_sol_macro_input::{SolInput, SolInputKind};
+<a href=#14 id=14 data-nosnippet>14</a><span class="kw">use </span>eyre::{<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html">Context</a>, <a href="https://docs.rs/eyre/0.6.12/eyre/trait.OptionExt.html">OptionExt</a>, <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>};
+<a href=#15 id=15 data-nosnippet>15</a><span class="kw">use </span>foundry_common::fs;
+<a href=#16 id=16 data-nosnippet>16</a><span class="kw">use </span>proc_macro2::{<a href="https://docs.rs/proc-macro2/1.0.93/proc_macro2/struct.Span.html">Span</a>, <a href="https://docs.rs/proc-macro2/1.0.93/proc_macro2/struct.TokenStream.html">TokenStream</a>};
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span>std::{
+<a href=#18 id=18 data-nosnippet>18</a>    <a href="https://doc.rust-lang.org/nightly/core/fmt/trait.Write.html">fmt::Write</a>,
+<a href=#19 id=19 data-nosnippet>19</a>    path::{<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>, <a href="https://doc.rust-lang.org/nightly/std/path/struct.PathBuf.html">PathBuf</a>},
+<a href=#20 id=20 data-nosnippet>20</a>    <a href="https://doc.rust-lang.org/nightly/core/str/traits/trait.FromStr.html">str::FromStr</a>,
+<a href=#21 id=21 data-nosnippet>21</a>};
+<a href=#22 id=22 data-nosnippet>22</a>
+<a href=#23 id=23 data-nosnippet>23</a><span class="kw">pub struct </span><a href="../../forge_sol_macro_gen/sol_macro_gen/struct.SolMacroGen.html">SolMacroGen</a> {
+<a href=#24 id=24 data-nosnippet>24</a>    <span class="kw">pub </span>path: <a href="https://doc.rust-lang.org/nightly/std/path/struct.PathBuf.html">PathBuf</a>,
+<a href=#25 id=25 data-nosnippet>25</a>    <span class="kw">pub </span>name: <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>,
+<a href=#26 id=26 data-nosnippet>26</a>    <span class="kw">pub </span>expansion: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://docs.rs/proc-macro2/1.0.93/proc_macro2/struct.TokenStream.html">TokenStream</a>&gt;,
+<a href=#27 id=27 data-nosnippet>27</a>}
+<a href=#28 id=28 data-nosnippet>28</a>
+<a href=#29 id=29 data-nosnippet>29</a><span class="kw">impl </span><a href="#23-27">SolMacroGen</a> {
+<a href=#30 id=30 data-nosnippet>30</a>    <span class="kw">pub fn </span>new(path: <a href="https://doc.rust-lang.org/nightly/std/path/struct.PathBuf.html">PathBuf</a>, name: <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>) -&gt; <span class="self">Self </span>{
+<a href=#31 id=31 data-nosnippet>31</a>        <span class="self">Self </span>{ <a href="#30">path</a>, <a href="#30">name</a>, expansion: <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None"><a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.None">None</a> </a>}
+<a href=#32 id=32 data-nosnippet>32</a>    }
+<a href=#33 id=33 data-nosnippet>33</a>
+<a href=#34 id=34 data-nosnippet>34</a>    <span class="kw">pub fn </span>get_sol_input(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;SolInput&gt; {
+<a href=#35 id=35 data-nosnippet>35</a>        <span class="kw">let </span>path = <a class="self" href="#34">self</a>.path.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.to_string_lossy">to_string_lossy</a>().<a href="https://doc.rust-lang.org/nightly/alloc/borrow/enum.Cow.html#method.into_owned">into_owned</a>();
+<a href=#36 id=36 data-nosnippet>36</a>        <span class="kw">let </span>name = <a href="https://docs.rs/proc-macro2/1.0.93/proc_macro2/struct.Ident.html#method.new">proc_macro2::Ident::new</a>(<span class="kw-2">&amp;</span><a class="self" href="#34">self</a>.name, <a href="https://docs.rs/proc-macro2/1.0.93/proc_macro2/struct.Span.html#method.call_site">Span::call_site</a>());
+<a href=#37 id=37 data-nosnippet>37</a>        <span class="kw">let </span>tokens = <a class="macro" href="https://docs.rs/quote/1.0.38/quote/macro.quote.html">quote::quote!</a> {
+<a href=#38 id=38 data-nosnippet>38</a>            #name,
+<a href=#39 id=39 data-nosnippet>39</a>            #path
+<a href=#40 id=40 data-nosnippet>40</a>        };
+<a href=#41 id=41 data-nosnippet>41</a>
+<a href=#42 id=42 data-nosnippet>42</a>        <span class="kw">let </span>sol_input: SolInput = <a href="https://docs.rs/syn/2.0.98/syn/fn.parse2.html">syn::parse2</a>(<a href="#37">tokens</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"failed to parse input"</span>)<span class="question-mark">?</span>;
+<a href=#43 id=43 data-nosnippet>43</a>
+<a href=#44 id=44 data-nosnippet>44</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(<a href="#42">sol_input</a>)
+<a href=#45 id=45 data-nosnippet>45</a>    }
+<a href=#46 id=46 data-nosnippet>46</a>}
+<a href=#47 id=47 data-nosnippet>47</a>
+<a href=#48 id=48 data-nosnippet>48</a><span class="kw">pub struct </span><a href="../../forge_sol_macro_gen/sol_macro_gen/struct.MultiSolMacroGen.html">MultiSolMacroGen</a> {
+<a href=#49 id=49 data-nosnippet>49</a>    <span class="kw">pub </span>artifacts_path: <a href="https://doc.rust-lang.org/nightly/std/path/struct.PathBuf.html">PathBuf</a>,
+<a href=#50 id=50 data-nosnippet>50</a>    <span class="kw">pub </span>instances: <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="#23-27">SolMacroGen</a>&gt;,
+<a href=#51 id=51 data-nosnippet>51</a>}
+<a href=#52 id=52 data-nosnippet>52</a>
+<a href=#53 id=53 data-nosnippet>53</a><span class="kw">impl </span><a href="#48-51">MultiSolMacroGen</a> {
+<a href=#54 id=54 data-nosnippet>54</a>    <span class="kw">pub fn </span>new(artifacts_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>, instances: <a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html">Vec</a>&lt;<a href="#23-27">SolMacroGen</a>&gt;) -&gt; <span class="self">Self </span>{
+<a href=#55 id=55 data-nosnippet>55</a>        <span class="self">Self </span>{ artifacts_path: <a href="#54">artifacts_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.to_path_buf">to_path_buf</a>(), <a href="#54">instances</a> }
+<a href=#56 id=56 data-nosnippet>56</a>    }
+<a href=#57 id=57 data-nosnippet>57</a>
+<a href=#58 id=58 data-nosnippet>58</a>    <span class="kw">pub fn </span>populate_expansion(<span class="kw-2">&amp;mut </span><span class="self">self</span>, bindings_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#59 id=59 data-nosnippet>59</a>        <span class="kw">for </span>instance <span class="kw">in </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.instances {
+<a href=#60 id=60 data-nosnippet>60</a>            <span class="kw">let </span>path = bindings_path.join(<span class="macro">format!</span>(<span class="string">"{}.rs"</span>, instance.name.to_lowercase()));
+<a href=#61 id=61 data-nosnippet>61</a>            <span class="kw">let </span>expansion = fs::read_to_string(path).wrap_err(<span class="string">"Failed to read file"</span>)<span class="question-mark">?</span>;
+<a href=#62 id=62 data-nosnippet>62</a>
+<a href=#63 id=63 data-nosnippet>63</a>            <span class="kw">let </span>tokens = TokenStream::from_str(<span class="kw-2">&amp;</span>expansion)
+<a href=#64 id=64 data-nosnippet>64</a>                .map_err(|e| <span class="macro">eyre::eyre!</span>(<span class="string">"Failed to parse TokenStream: {e}"</span>))<span class="question-mark">?</span>;
+<a href=#65 id=65 data-nosnippet>65</a>            instance.expansion = <span class="prelude-val">Some</span>(tokens);
+<a href=#66 id=66 data-nosnippet>66</a>        }
+<a href=#67 id=67 data-nosnippet>67</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#68 id=68 data-nosnippet>68</a>    }
+<a href=#69 id=69 data-nosnippet>69</a>
+<a href=#70 id=70 data-nosnippet>70</a>    <span class="kw">pub fn </span>generate_bindings(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#71 id=71 data-nosnippet>71</a>        <span class="kw">for </span>instance <span class="kw">in </span><span class="kw-2">&amp;mut </span><span class="self">self</span>.instances {
+<a href=#72 id=72 data-nosnippet>72</a>            <span class="self">Self</span>::generate_binding(instance).wrap_err_with(|| {
+<a href=#73 id=73 data-nosnippet>73</a>                <span class="macro">format!</span>(
+<a href=#74 id=74 data-nosnippet>74</a>                    <span class="string">"failed to generate bindings for {}:{}"</span>,
+<a href=#75 id=75 data-nosnippet>75</a>                    instance.path.display(),
+<a href=#76 id=76 data-nosnippet>76</a>                    instance.name
+<a href=#77 id=77 data-nosnippet>77</a>                )
+<a href=#78 id=78 data-nosnippet>78</a>            })<span class="question-mark">?</span>;
+<a href=#79 id=79 data-nosnippet>79</a>        }
+<a href=#80 id=80 data-nosnippet>80</a>
+<a href=#81 id=81 data-nosnippet>81</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#82 id=82 data-nosnippet>82</a>    }
+<a href=#83 id=83 data-nosnippet>83</a>
+<a href=#84 id=84 data-nosnippet>84</a>    <span class="kw">fn </span>generate_binding(instance: <span class="kw-2">&amp;mut </span><a href="#23-27">SolMacroGen</a>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#85 id=85 data-nosnippet>85</a>        <span class="kw">let </span>input = <a href="#84">instance</a>.<a href="#34-45">get_sol_input</a>()<span class="question-mark">?</span>.normalize_json()<span class="question-mark">?</span>;
+<a href=#86 id=86 data-nosnippet>86</a>
+<a href=#87 id=87 data-nosnippet>87</a>        <span class="kw">let </span>SolInput { attrs: <span class="kw">_</span>, path: <span class="kw">_</span>, kind } = <a href="#85">input</a>;
+<a href=#88 id=88 data-nosnippet>88</a>
+<a href=#89 id=89 data-nosnippet>89</a>        <span class="kw">let </span>tokens = <span class="kw">match </span><a href="#87">kind</a> {
+<a href=#90 id=90 data-nosnippet>90</a>            SolInputKind::Sol(<span class="kw-2">mut </span>file) =&gt; {
+<a href=#91 id=91 data-nosnippet>91</a>                <span class="kw">let </span>sol_attr: <a href="https://docs.rs/syn/2.0.98/syn/attr/struct.Attribute.html">syn::Attribute</a> = <a class="macro" href="https://docs.rs/syn/2.0.98/syn/macro.parse_quote.html">syn::parse_quote!</a> {
+<a href=#92 id=92 data-nosnippet>92</a>                    <span class="attr">#[sol(rpc, alloy_sol_types = alloy::sol_types, alloy_contract = alloy::contract)]
+<a href=#93 id=93 data-nosnippet>93</a>                </span>};
+<a href=#94 id=94 data-nosnippet>94</a>                <a href="#90">file</a>.attrs.<a href="https://doc.rust-lang.org/nightly/alloc/vec/struct.Vec.html#method.push">push</a>(<a href="#91">sol_attr</a>);
+<a href=#95 id=95 data-nosnippet>95</a>                expand(<a href="#90">file</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"failed to expand"</span>)<span class="question-mark">?
+<a href=#96 id=96 data-nosnippet>96</a>            </span>}
+<a href=#97 id=97 data-nosnippet>97</a>            <span class="kw">_ </span>=&gt; <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.unreachable.html">unreachable!</a>(),
+<a href=#98 id=98 data-nosnippet>98</a>        };
+<a href=#99 id=99 data-nosnippet>99</a>
+<a href=#100 id=100 data-nosnippet>100</a>        <a href="#84">instance</a>.expansion = <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(<a href="#89">tokens</a>);
+<a href=#101 id=101 data-nosnippet>101</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#102 id=102 data-nosnippet>102</a>    }
+<a href=#103 id=103 data-nosnippet>103</a>
+<a href=#104 id=104 data-nosnippet>104</a>    <span class="kw">pub fn </span>write_to_crate(
+<a href=#105 id=105 data-nosnippet>105</a>        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
+<a href=#106 id=106 data-nosnippet>106</a>        name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#107 id=107 data-nosnippet>107</a>        version: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#108 id=108 data-nosnippet>108</a>        bindings_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>,
+<a href=#109 id=109 data-nosnippet>109</a>        single_file: <a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,
+<a href=#110 id=110 data-nosnippet>110</a>        alloy_version: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#111 id=111 data-nosnippet>111</a>        alloy_rev: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#112 id=112 data-nosnippet>112</a>    ) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#113 id=113 data-nosnippet>113</a>        <a class="self" href="#105">self</a>.<a href="#70-82">generate_bindings</a>()<span class="question-mark">?</span>;
+<a href=#114 id=114 data-nosnippet>114</a>
+<a href=#115 id=115 data-nosnippet>115</a>        <span class="kw">let </span>src = <a href="#108">bindings_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"src"</span>);
+<a href=#116 id=116 data-nosnippet>116</a>
+<a href=#117 id=117 data-nosnippet>117</a>        <span class="kw">let _ </span>= fs::create_dir_all(<span class="kw-2">&amp;</span><a href="#115">src</a>);
+<a href=#118 id=118 data-nosnippet>118</a>
+<a href=#119 id=119 data-nosnippet>119</a>        <span class="comment">// Write Cargo.toml
+<a href=#120 id=120 data-nosnippet>120</a>        </span><span class="kw">let </span>cargo_toml_path = <a href="#108">bindings_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"Cargo.toml"</span>);
+<a href=#121 id=121 data-nosnippet>121</a>        <span class="kw">let </span><span class="kw-2">mut </span>toml_contents = <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(
+<a href=#122 id=122 data-nosnippet>122</a>            <span class="string">r#"[package]
+<a href=#123 id=123 data-nosnippet>123</a>name = "{name}"
+<a href=#124 id=124 data-nosnippet>124</a>version = "{version}"
+<a href=#125 id=125 data-nosnippet>125</a>edition = "2021"
+<a href=#126 id=126 data-nosnippet>126</a>
+<a href=#127 id=127 data-nosnippet>127</a>[dependencies]
+<a href=#128 id=128 data-nosnippet>128</a>"#
+<a href=#129 id=129 data-nosnippet>129</a>        </span>);
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a>        <span class="kw">let </span>alloy_dep = <a href="#331-343"><span class="self">Self</span>::get_alloy_dep</a>(<a href="#110">alloy_version</a>, <a href="#111">alloy_rev</a>);
+<a href=#132 id=132 data-nosnippet>132</a>        <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.write.html">write!</a>(<a href="#121">toml_contents</a>, <span class="string">"{alloy_dep}"</span>)<span class="question-mark">?</span>;
+<a href=#133 id=133 data-nosnippet>133</a>
+<a href=#134 id=134 data-nosnippet>134</a>        fs::write(<a href="#120">cargo_toml_path</a>, <a href="#121">toml_contents</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"Failed to write Cargo.toml"</span>)<span class="question-mark">?</span>;
+<a href=#135 id=135 data-nosnippet>135</a>
+<a href=#136 id=136 data-nosnippet>136</a>        <span class="kw">let </span><span class="kw-2">mut </span>lib_contents = <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html#method.new">String::new</a>();
+<a href=#137 id=137 data-nosnippet>137</a>        <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.write.html">write!</a>(
+<a href=#138 id=138 data-nosnippet>138</a>            <span class="kw-2">&amp;mut </span><a href="#136">lib_contents</a>,
+<a href=#139 id=139 data-nosnippet>139</a>            <span class="string">r#"#![allow(unused_imports, clippy::all, rustdoc::all)]
+<a href=#140 id=140 data-nosnippet>140</a>        //! This module contains the sol! generated bindings for solidity contracts.
+<a href=#141 id=141 data-nosnippet>141</a>        //! This is autogenerated code.
+<a href=#142 id=142 data-nosnippet>142</a>        //! Do not manually edit these files.
+<a href=#143 id=143 data-nosnippet>143</a>        //! These files may be overwritten by the codegen system at any time.
+<a href=#144 id=144 data-nosnippet>144</a>        "#
+<a href=#145 id=145 data-nosnippet>145</a>        </span>)<span class="question-mark">?</span>;
+<a href=#146 id=146 data-nosnippet>146</a>
+<a href=#147 id=147 data-nosnippet>147</a>        <span class="comment">// Write src
+<a href=#148 id=148 data-nosnippet>148</a>        </span><span class="kw">let </span>parse_error = |name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>| {
+<a href=#149 id=149 data-nosnippet>149</a>            <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(<span class="string">"failed to parse generated tokens as an AST for {name};\nthis is likely a bug"</span>)
+<a href=#150 id=150 data-nosnippet>150</a>        };
+<a href=#151 id=151 data-nosnippet>151</a>        <span class="kw">for </span>instance <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.instances {
+<a href=#152 id=152 data-nosnippet>152</a>            <span class="kw">let </span>contents = instance.expansion.as_ref().unwrap();
+<a href=#153 id=153 data-nosnippet>153</a>
+<a href=#154 id=154 data-nosnippet>154</a>            <span class="kw">let </span>name = instance.name.to_lowercase();
+<a href=#155 id=155 data-nosnippet>155</a>            <span class="kw">let </span>path = src.join(<span class="macro">format!</span>(<span class="string">"{name}.rs"</span>));
+<a href=#156 id=156 data-nosnippet>156</a>            <span class="kw">let </span>file = syn::parse2(contents.clone())
+<a href=#157 id=157 data-nosnippet>157</a>                .wrap_err_with(|| parse_error(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"{}:{}"</span>, path.display(), name)))<span class="question-mark">?</span>;
+<a href=#158 id=158 data-nosnippet>158</a>            <span class="kw">let </span>contents = prettyplease::unparse(<span class="kw-2">&amp;</span>file);
+<a href=#159 id=159 data-nosnippet>159</a>            <span class="kw">if </span>single_file {
+<a href=#160 id=160 data-nosnippet>160</a>                <span class="macro">write!</span>(<span class="kw-2">&amp;mut </span>lib_contents, <span class="string">"{contents}"</span>)<span class="question-mark">?</span>;
+<a href=#161 id=161 data-nosnippet>161</a>            } <span class="kw">else </span>{
+<a href=#162 id=162 data-nosnippet>162</a>                fs::write(path, contents).wrap_err(<span class="string">"failed to write to file"</span>)<span class="question-mark">?</span>;
+<a href=#163 id=163 data-nosnippet>163</a>                write_mod_name(<span class="kw-2">&amp;mut </span>lib_contents, <span class="kw-2">&amp;</span>name)<span class="question-mark">?</span>;
+<a href=#164 id=164 data-nosnippet>164</a>            }
+<a href=#165 id=165 data-nosnippet>165</a>        }
+<a href=#166 id=166 data-nosnippet>166</a>
+<a href=#167 id=167 data-nosnippet>167</a>        <span class="kw">let </span>lib_path = <a href="#115">src</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"lib.rs"</span>);
+<a href=#168 id=168 data-nosnippet>168</a>        <span class="kw">let </span>lib_file = <a href="https://docs.rs/syn/2.0.98/syn/fn.parse_file.html">syn::parse_file</a>(<span class="kw-2">&amp;</span><a href="#136">lib_contents</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err_with">wrap_err_with</a>(|| <a href="#148">parse_error</a>(<span class="string">"lib.rs"</span>))<span class="question-mark">?</span>;
+<a href=#169 id=169 data-nosnippet>169</a>        <span class="kw">let </span>lib_contents = <a href="https://docs.rs/prettyplease/0.2.29/prettyplease/fn.unparse.html">prettyplease::unparse</a>(<span class="kw-2">&amp;</span><a href="#168">lib_file</a>);
+<a href=#170 id=170 data-nosnippet>170</a>        fs::write(<a href="#167">lib_path</a>, <a href="#169">lib_contents</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"Failed to write lib.rs"</span>)<span class="question-mark">?</span>;
+<a href=#171 id=171 data-nosnippet>171</a>
+<a href=#172 id=172 data-nosnippet>172</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#173 id=173 data-nosnippet>173</a>    }
+<a href=#174 id=174 data-nosnippet>174</a>
+<a href=#175 id=175 data-nosnippet>175</a>    <span class="kw">pub fn </span>write_to_module(<span class="kw-2">&amp;mut </span><span class="self">self</span>, bindings_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>, single_file: <a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#176 id=176 data-nosnippet>176</a>        <a class="self" href="#175">self</a>.<a href="#70-82">generate_bindings</a>()<span class="question-mark">?</span>;
+<a href=#177 id=177 data-nosnippet>177</a>
+<a href=#178 id=178 data-nosnippet>178</a>        <span class="kw">let _ </span>= fs::create_dir_all(<a href="#175">bindings_path</a>);
+<a href=#179 id=179 data-nosnippet>179</a>
+<a href=#180 id=180 data-nosnippet>180</a>        <span class="kw">let </span><span class="kw-2">mut </span>mod_contents = <span class="string">r#"#![allow(unused_imports, clippy::all, rustdoc::all)]
+<a href=#181 id=181 data-nosnippet>181</a>        //! This module contains the sol! generated bindings for solidity contracts.
+<a href=#182 id=182 data-nosnippet>182</a>        //! This is autogenerated code.
+<a href=#183 id=183 data-nosnippet>183</a>        //! Do not manually edit these files.
+<a href=#184 id=184 data-nosnippet>184</a>        //! These files may be overwritten by the codegen system at any time.
+<a href=#185 id=185 data-nosnippet>185</a>        "#
+<a href=#186 id=186 data-nosnippet>186</a>        </span>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>();
+<a href=#187 id=187 data-nosnippet>187</a>
+<a href=#188 id=188 data-nosnippet>188</a>        <span class="kw">for </span>instance <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.instances {
+<a href=#189 id=189 data-nosnippet>189</a>            <span class="kw">let </span>name = instance.name.to_lowercase();
+<a href=#190 id=190 data-nosnippet>190</a>            <span class="kw">if </span>!single_file {
+<a href=#191 id=191 data-nosnippet>191</a>                <span class="comment">// Module
+<a href=#192 id=192 data-nosnippet>192</a>                </span>write_mod_name(<span class="kw-2">&amp;mut </span>mod_contents, <span class="kw-2">&amp;</span>name)<span class="question-mark">?</span>;
+<a href=#193 id=193 data-nosnippet>193</a>                <span class="kw">let </span><span class="kw-2">mut </span>contents = String::new();
+<a href=#194 id=194 data-nosnippet>194</a>
+<a href=#195 id=195 data-nosnippet>195</a>                <span class="macro">write!</span>(contents, <span class="string">"{}"</span>, instance.expansion.as_ref().unwrap())<span class="question-mark">?</span>;
+<a href=#196 id=196 data-nosnippet>196</a>                <span class="kw">let </span>file = syn::parse_file(<span class="kw-2">&amp;</span>contents)<span class="question-mark">?</span>;
+<a href=#197 id=197 data-nosnippet>197</a>
+<a href=#198 id=198 data-nosnippet>198</a>                <span class="kw">let </span>contents = prettyplease::unparse(<span class="kw-2">&amp;</span>file);
+<a href=#199 id=199 data-nosnippet>199</a>                fs::write(bindings_path.join(<span class="macro">format!</span>(<span class="string">"{name}.rs"</span>)), contents)
+<a href=#200 id=200 data-nosnippet>200</a>                    .wrap_err(<span class="string">"Failed to write file"</span>)<span class="question-mark">?</span>;
+<a href=#201 id=201 data-nosnippet>201</a>            } <span class="kw">else </span>{
+<a href=#202 id=202 data-nosnippet>202</a>                <span class="comment">// Single File
+<a href=#203 id=203 data-nosnippet>203</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>contents = String::new();
+<a href=#204 id=204 data-nosnippet>204</a>                <span class="macro">write!</span>(contents, <span class="string">"{}\n\n"</span>, instance.expansion.as_ref().unwrap())<span class="question-mark">?</span>;
+<a href=#205 id=205 data-nosnippet>205</a>                <span class="macro">write!</span>(mod_contents, <span class="string">"{contents}"</span>)<span class="question-mark">?</span>;
+<a href=#206 id=206 data-nosnippet>206</a>            }
+<a href=#207 id=207 data-nosnippet>207</a>        }
+<a href=#208 id=208 data-nosnippet>208</a>
+<a href=#209 id=209 data-nosnippet>209</a>        <span class="kw">let </span>mod_path = <a href="#175">bindings_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"mod.rs"</span>);
+<a href=#210 id=210 data-nosnippet>210</a>        <span class="kw">let </span>mod_file = <a href="https://docs.rs/syn/2.0.98/syn/fn.parse_file.html">syn::parse_file</a>(<span class="kw-2">&amp;</span><a href="#180">mod_contents</a>)<span class="question-mark">?</span>;
+<a href=#211 id=211 data-nosnippet>211</a>        <span class="kw">let </span>mod_contents = <a href="https://docs.rs/prettyplease/0.2.29/prettyplease/fn.unparse.html">prettyplease::unparse</a>(<span class="kw-2">&amp;</span><a href="#210">mod_file</a>);
+<a href=#212 id=212 data-nosnippet>212</a>
+<a href=#213 id=213 data-nosnippet>213</a>        fs::write(<a href="#209">mod_path</a>, <a href="#211">mod_contents</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"Failed to write mod.rs"</span>)<span class="question-mark">?</span>;
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#216 id=216 data-nosnippet>216</a>    }
+<a href=#217 id=217 data-nosnippet>217</a>
+<a href=#218 id=218 data-nosnippet>218</a>    <span class="doccomment">/// Checks that the generated bindings are up to date with the latest version of
+<a href=#219 id=219 data-nosnippet>219</a>    /// `sol!`.
+<a href=#220 id=220 data-nosnippet>220</a>    ///
+<a href=#221 id=221 data-nosnippet>221</a>    /// Returns `Ok(())` if the generated bindings are up to date, otherwise it returns
+<a href=#222 id=222 data-nosnippet>222</a>    /// `Err(_)`.
+<a href=#223 id=223 data-nosnippet>223</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
+<a href=#224 id=224 data-nosnippet>224</a>    </span><span class="kw">pub fn </span>check_consistency(
+<a href=#225 id=225 data-nosnippet>225</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#226 id=226 data-nosnippet>226</a>        name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#227 id=227 data-nosnippet>227</a>        version: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#228 id=228 data-nosnippet>228</a>        crate_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>,
+<a href=#229 id=229 data-nosnippet>229</a>        single_file: <a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,
+<a href=#230 id=230 data-nosnippet>230</a>        check_cargo_toml: <a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,
+<a href=#231 id=231 data-nosnippet>231</a>        is_mod: <a href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,
+<a href=#232 id=232 data-nosnippet>232</a>        alloy_version: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#233 id=233 data-nosnippet>233</a>        alloy_rev: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#234 id=234 data-nosnippet>234</a>    ) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="kw">if </span>check_cargo_toml {
+<a href=#236 id=236 data-nosnippet>236</a>            <a class="self" href="#225">self</a>.<a href="#297-326">check_cargo_toml</a>(<a href="#226">name</a>, <a href="#227">version</a>, <a href="#228">crate_path</a>, <a href="#232">alloy_version</a>, <a href="#233">alloy_rev</a>)<span class="question-mark">?</span>;
+<a href=#237 id=237 data-nosnippet>237</a>        }
+<a href=#238 id=238 data-nosnippet>238</a>
+<a href=#239 id=239 data-nosnippet>239</a>        <span class="kw">let </span><span class="kw-2">mut </span>super_contents = <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html#method.new">String::new</a>();
+<a href=#240 id=240 data-nosnippet>240</a>        <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.write.html">write!</a>(
+<a href=#241 id=241 data-nosnippet>241</a>            <span class="kw-2">&amp;mut </span><a href="#239">super_contents</a>,
+<a href=#242 id=242 data-nosnippet>242</a>            <span class="string">r#"#![allow(unused_imports, clippy::all, rustdoc::all)]
+<a href=#243 id=243 data-nosnippet>243</a>            //! This module contains the sol! generated bindings for solidity contracts.
+<a href=#244 id=244 data-nosnippet>244</a>            //! This is autogenerated code.
+<a href=#245 id=245 data-nosnippet>245</a>            //! Do not manually edit these files.
+<a href=#246 id=246 data-nosnippet>246</a>            //! These files may be overwritten by the codegen system at any time.
+<a href=#247 id=247 data-nosnippet>247</a>            "#
+<a href=#248 id=248 data-nosnippet>248</a>        </span>)<span class="question-mark">?</span>;
+<a href=#249 id=249 data-nosnippet>249</a>        <span class="kw">if </span>!single_file {
+<a href=#250 id=250 data-nosnippet>250</a>            <span class="kw">for </span>instance <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.instances {
+<a href=#251 id=251 data-nosnippet>251</a>                <span class="kw">let </span>name = instance.name.to_lowercase();
+<a href=#252 id=252 data-nosnippet>252</a>                <span class="kw">let </span>path = <span class="kw">if </span>is_mod {
+<a href=#253 id=253 data-nosnippet>253</a>                    crate_path.join(<span class="macro">format!</span>(<span class="string">"{name}.rs"</span>))
+<a href=#254 id=254 data-nosnippet>254</a>                } <span class="kw">else </span>{
+<a href=#255 id=255 data-nosnippet>255</a>                    crate_path.join(<span class="macro">format!</span>(<span class="string">"src/{name}.rs"</span>))
+<a href=#256 id=256 data-nosnippet>256</a>                };
+<a href=#257 id=257 data-nosnippet>257</a>                <span class="kw">let </span>tokens = instance
+<a href=#258 id=258 data-nosnippet>258</a>                    .expansion
+<a href=#259 id=259 data-nosnippet>259</a>                    .as_ref()
+<a href=#260 id=260 data-nosnippet>260</a>                    .ok_or_eyre(<span class="macro">format!</span>(<span class="string">"TokenStream for {path:?} does not exist"</span>))<span class="question-mark">?
+<a href=#261 id=261 data-nosnippet>261</a>                    </span>.to_string();
+<a href=#262 id=262 data-nosnippet>262</a>
+<a href=#263 id=263 data-nosnippet>263</a>                <span class="self">self</span>.check_file_contents(<span class="kw-2">&amp;</span>path, <span class="kw-2">&amp;</span>tokens)<span class="question-mark">?</span>;
+<a href=#264 id=264 data-nosnippet>264</a>                write_mod_name(<span class="kw-2">&amp;mut </span>super_contents, <span class="kw-2">&amp;</span>name)<span class="question-mark">?</span>;
+<a href=#265 id=265 data-nosnippet>265</a>            }
+<a href=#266 id=266 data-nosnippet>266</a>
+<a href=#267 id=267 data-nosnippet>267</a>            <span class="kw">let </span>super_path =
+<a href=#268 id=268 data-nosnippet>268</a>                <span class="kw">if </span>is_mod { <a href="#228">crate_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"mod.rs"</span>) } <span class="kw">else </span>{ <a href="#228">crate_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"src/lib.rs"</span>) };
+<a href=#269 id=269 data-nosnippet>269</a>            <a class="self" href="#225">self</a>.<a href="#275-295">check_file_contents</a>(<span class="kw-2">&amp;</span><a href="#267">super_path</a>, <span class="kw-2">&amp;</span><a href="#239">super_contents</a>)<span class="question-mark">?</span>;
+<a href=#270 id=270 data-nosnippet>270</a>        }
+<a href=#271 id=271 data-nosnippet>271</a>
+<a href=#272 id=272 data-nosnippet>272</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#273 id=273 data-nosnippet>273</a>    }
+<a href=#274 id=274 data-nosnippet>274</a>
+<a href=#275 id=275 data-nosnippet>275</a>    <span class="kw">fn </span>check_file_contents(<span class="kw-2">&amp;</span><span class="self">self</span>, file_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>, expected_contents: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#276 id=276 data-nosnippet>276</a>        <a class="macro" href="https://docs.rs/eyre/0.6.12/eyre/macro.ensure.html">eyre::ensure!</a>(
+<a href=#277 id=277 data-nosnippet>277</a>            file_path.is_file() &amp;&amp; file_path.exists(),
+<a href=#278 id=278 data-nosnippet>278</a>            <span class="string">"{} is not a file"</span>,
+<a href=#279 id=279 data-nosnippet>279</a>            file_path.display()
+<a href=#280 id=280 data-nosnippet>280</a>        );
+<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">let </span>file_contents = <span class="kw-2">&amp;</span>fs::read_to_string(<a href="#275">file_path</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"Failed to read file"</span>)<span class="question-mark">?</span>;
+<a href=#282 id=282 data-nosnippet>282</a>
+<a href=#283 id=283 data-nosnippet>283</a>        <span class="comment">// Format both
+<a href=#284 id=284 data-nosnippet>284</a>        </span><span class="kw">let </span>file_contents = <a href="https://docs.rs/syn/2.0.98/syn/fn.parse_file.html">syn::parse_file</a>(<a href="#281">file_contents</a>)<span class="question-mark">?</span>;
+<a href=#285 id=285 data-nosnippet>285</a>        <span class="kw">let </span>formatted_file = <a href="https://docs.rs/prettyplease/0.2.29/prettyplease/fn.unparse.html">prettyplease::unparse</a>(<span class="kw-2">&amp;</span><a href="#284">file_contents</a>);
+<a href=#286 id=286 data-nosnippet>286</a>
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="kw">let </span>expected_contents = <a href="https://docs.rs/syn/2.0.98/syn/fn.parse_file.html">syn::parse_file</a>(<a href="#275">expected_contents</a>)<span class="question-mark">?</span>;
+<a href=#288 id=288 data-nosnippet>288</a>        <span class="kw">let </span>formatted_exp = <a href="https://docs.rs/prettyplease/0.2.29/prettyplease/fn.unparse.html">prettyplease::unparse</a>(<span class="kw-2">&amp;</span><a href="#287">expected_contents</a>);
+<a href=#289 id=289 data-nosnippet>289</a>
+<a href=#290 id=290 data-nosnippet>290</a>        <a class="macro" href="https://docs.rs/eyre/0.6.12/eyre/macro.ensure.html">eyre::ensure!</a>(
+<a href=#291 id=291 data-nosnippet>291</a>            formatted_file == formatted_exp,
+<a href=#292 id=292 data-nosnippet>292</a>            <span class="string">"File contents do not match expected contents for {file_path:?}"
+<a href=#293 id=293 data-nosnippet>293</a>        </span>);
+<a href=#294 id=294 data-nosnippet>294</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#295 id=295 data-nosnippet>295</a>    }
+<a href=#296 id=296 data-nosnippet>296</a>
+<a href=#297 id=297 data-nosnippet>297</a>    <span class="kw">fn </span>check_cargo_toml(
+<a href=#298 id=298 data-nosnippet>298</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#299 id=299 data-nosnippet>299</a>        name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#300 id=300 data-nosnippet>300</a>        version: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>,
+<a href=#301 id=301 data-nosnippet>301</a>        crate_path: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html">Path</a>,
+<a href=#302 id=302 data-nosnippet>302</a>        alloy_version: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#303 id=303 data-nosnippet>303</a>        alloy_rev: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;,
+<a href=#304 id=304 data-nosnippet>304</a>    ) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#305 id=305 data-nosnippet>305</a>        <a class="macro" href="https://docs.rs/eyre/0.6.12/eyre/macro.ensure.html">eyre::ensure!</a>(crate_path.is_dir(), <span class="string">"Crate path must be a directory"</span>);
+<a href=#306 id=306 data-nosnippet>306</a>
+<a href=#307 id=307 data-nosnippet>307</a>        <span class="kw">let </span>cargo_toml_path = <a href="#301">crate_path</a>.<a href="https://doc.rust-lang.org/nightly/std/path/struct.Path.html#method.join">join</a>(<span class="string">"Cargo.toml"</span>);
+<a href=#308 id=308 data-nosnippet>308</a>
+<a href=#309 id=309 data-nosnippet>309</a>        <a class="macro" href="https://docs.rs/eyre/0.6.12/eyre/macro.ensure.html">eyre::ensure!</a>(cargo_toml_path.is_file(), <span class="string">"Cargo.toml must exist"</span>);
+<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>cargo_toml_contents =
+<a href=#311 id=311 data-nosnippet>311</a>            fs::read_to_string(<a href="#307">cargo_toml_path</a>).<a href="https://docs.rs/eyre/0.6.12/eyre/trait.WrapErr.html#tymethod.wrap_err">wrap_err</a>(<span class="string">"Failed to read Cargo.toml"</span>)<span class="question-mark">?</span>;
+<a href=#312 id=312 data-nosnippet>312</a>
+<a href=#313 id=313 data-nosnippet>313</a>        <span class="kw">let </span>name_check = <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(<span class="string">"name = \"{name}\""</span>);
+<a href=#314 id=314 data-nosnippet>314</a>        <span class="kw">let </span>version_check = <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(<span class="string">"version = \"{version}\""</span>);
+<a href=#315 id=315 data-nosnippet>315</a>        <span class="kw">let </span>alloy_dep_check = <a href="#331-343"><span class="self">Self</span>::get_alloy_dep</a>(<a href="#302">alloy_version</a>, <a href="#303">alloy_rev</a>);
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="kw">let </span>toml_consistent = <a href="#310">cargo_toml_contents</a>.<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.contains">contains</a>(<span class="kw-2">&amp;</span><a href="#313">name_check</a>) &amp;&amp;
+<a href=#317 id=317 data-nosnippet>317</a>            <a href="#310">cargo_toml_contents</a>.<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.contains">contains</a>(<span class="kw-2">&amp;</span><a href="#314">version_check</a>) &amp;&amp;
+<a href=#318 id=318 data-nosnippet>318</a>            <a href="#310">cargo_toml_contents</a>.<a href="https://doc.rust-lang.org/nightly/core/foreigntype.str.html#method.contains">contains</a>(<span class="kw-2">&amp;</span><a href="#315">alloy_dep_check</a>);
+<a href=#319 id=319 data-nosnippet>319</a>        <a class="macro" href="https://docs.rs/eyre/0.6.12/eyre/macro.ensure.html">eyre::ensure!</a>(
+<a href=#320 id=320 data-nosnippet>320</a>            toml_consistent,
+<a href=#321 id=321 data-nosnippet>321</a>            <span class="string">r#"The contents of Cargo.toml do not match the expected output of the latest `sol!` version.
+<a href=#322 id=322 data-nosnippet>322</a>                This indicates that the existing bindings are outdated and need to be generated again."#
+<a href=#323 id=323 data-nosnippet>323</a>        </span>);
+<a href=#324 id=324 data-nosnippet>324</a>
+<a href=#325 id=325 data-nosnippet>325</a>        <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#326 id=326 data-nosnippet>326</a>    }
+<a href=#327 id=327 data-nosnippet>327</a>
+<a href=#328 id=328 data-nosnippet>328</a>    <span class="doccomment">/// Returns the `alloy` dependency string for the Cargo.toml file.
+<a href=#329 id=329 data-nosnippet>329</a>    /// If `alloy_version` is provided, it will use that version from crates.io.
+<a href=#330 id=330 data-nosnippet>330</a>    /// If `alloy_rev` is provided, it will use that revision from the GitHub repository.
+<a href=#331 id=331 data-nosnippet>331</a>    </span><span class="kw">fn </span>get_alloy_dep(alloy_version: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;, alloy_rev: <a class="prelude-ty" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html">Option</a>&lt;<a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>&gt;) -&gt; <a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a> {
+<a href=#332 id=332 data-nosnippet>332</a>        <span class="kw">if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(alloy_version) = <a href="#331">alloy_version</a> {
+<a href=#333 id=333 data-nosnippet>333</a>            <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(
+<a href=#334 id=334 data-nosnippet>334</a>                <span class="string">r#"alloy = {{ version = "{alloy_version}", features = ["sol-types", "contract"] }}"#</span>,
+<a href=#335 id=335 data-nosnippet>335</a>            )
+<a href=#336 id=336 data-nosnippet>336</a>        } <span class="kw">else if let </span><a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html#variant.Some">Some</a>(alloy_rev) = <a href="#331">alloy_rev</a> {
+<a href=#337 id=337 data-nosnippet>337</a>            <a class="macro" href="https://doc.rust-lang.org/nightly/alloc/macro.format.html">format!</a>(
+<a href=#338 id=338 data-nosnippet>338</a>                <span class="string">r#"alloy = {{ git = "https://github.com/alloy-rs/alloy", rev = "{alloy_rev}", features = ["sol-types", "contract"] }}"#</span>,
+<a href=#339 id=339 data-nosnippet>339</a>            )
+<a href=#340 id=340 data-nosnippet>340</a>        } <span class="kw">else </span>{
+<a href=#341 id=341 data-nosnippet>341</a>            <span class="string">r#"alloy = { git = "https://github.com/alloy-rs/alloy", features = ["sol-types", "contract"] }"#</span>.<a href="https://doc.rust-lang.org/nightly/alloc/string/trait.ToString.html#tymethod.to_string">to_string</a>()
+<a href=#342 id=342 data-nosnippet>342</a>        }
+<a href=#343 id=343 data-nosnippet>343</a>    }
+<a href=#344 id=344 data-nosnippet>344</a>}
+<a href=#345 id=345 data-nosnippet>345</a>
+<a href=#346 id=346 data-nosnippet>346</a><span class="kw">fn </span><a href="../../forge_sol_macro_gen/sol_macro_gen/fn.write_mod_name.html">write_mod_name</a>(contents: <span class="kw-2">&amp;mut </span><a href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html">String</a>, name: <span class="kw-2">&amp;</span><a href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>) -&gt; <a class="prelude-ty" href="https://docs.rs/eyre/0.6.12/eyre/type.Result.html">Result</a>&lt;()&gt; {
+<a href=#347 id=347 data-nosnippet>347</a>    <span class="kw">if </span>syn::parse_str::&lt;syn::Ident&gt;(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"pub mod {name};"</span>)).is_ok() {
+<a href=#348 id=348 data-nosnippet>348</a>        <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.write.html">write!</a>(<a href="#346">contents</a>, <span class="string">"pub mod {name};"</span>)<span class="question-mark">?</span>;
+<a href=#349 id=349 data-nosnippet>349</a>    } <span class="kw">else </span>{
+<a href=#350 id=350 data-nosnippet>350</a>        <a class="macro" href="https://doc.rust-lang.org/nightly/core/macro.write.html">write!</a>(<a href="#346">contents</a>, <span class="string">"pub mod r#{name};"</span>)<span class="question-mark">?</span>;
+<a href=#351 id=351 data-nosnippet>351</a>    }
+<a href=#352 id=352 data-nosnippet>352</a>    <a class="prelude-val" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html#variant.Ok">Ok</a>(())
+<a href=#353 id=353 data-nosnippet>353</a>}</code></pre></div></section></main></body></html>
