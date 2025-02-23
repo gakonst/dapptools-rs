@@ -37,13 +37,17 @@ pub struct InitArgs {
     #[arg(long, conflicts_with = "template")]
     pub vscode: bool,
 
+    /// Initialize a Vyper project template
+    #[arg(long, conflicts_with = "template")]
+    pub vyper: bool,
+
     #[command(flatten)]
     pub install: DependencyInstallOpts,
 }
 
 impl InitArgs {
     pub fn run(self) -> Result<()> {
-        let Self { root, template, branch, install, offline, force, vscode } = self;
+        let Self { root, template, branch, install, offline, force, vscode, vyper } = self;
         let DependencyInstallOpts { shallow, no_git, commit } = install;
 
         // create the root dir if it does not exist
@@ -52,6 +56,13 @@ impl InitArgs {
         }
         let root = dunce::canonicalize(root)?;
         let git = Git::new(&root).shallow(shallow);
+
+        // If vyper flag is set, use the Vyper template
+        let template = if vyper {
+            Some("https://github.com/Patronum-Labs/foundry-vyper".to_string())
+        } else {
+            template
+        };
 
         // if a template is provided, then this command initializes a git repo,
         // fetches the template repo, and resets the git history to the head of the fetched
