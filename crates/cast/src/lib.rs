@@ -2231,6 +2231,8 @@ fn explorer_client(
 mod tests {
     use super::SimpleCast as Cast;
     use alloy_primitives::hex;
+    use alloy_signer::k256::{elliptic_curve::bigint::Integer, sha2::digest::typenum::uint};
+    use itertools::Itertools;
 
     #[test]
     fn simple_selector() {
@@ -2345,6 +2347,126 @@ mod tests {
                 ""
             ]
         );
+    }
+
+    #[test]
+    fn calldata_decode_array_param() {
+        let data = "0xdb5b0ed700000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000006772bf190000000000000000000000000000000000000000000000000000000000020716000000000000000000000000af9d27ffe4d51ed54ac8eec78f2785d7e11e5ab100000000000000000000000000000000000000000000000000000000000002c0000000000000000000000000000000000000000000000000000000000000000404366a6dc4b2f348a85e0066e46f0cc206fca6512e0ed7f17ca7afb88e9a4c27000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000093922dee6e380c28a50c008ab167b7800bb24c2026cd1b22f1c6fb884ceed7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060f85e59ecad6c1a6be343a945abedb7d5b5bfad7817c4d8cc668da7d391faf700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000093dfbf04395fbec1f1aed4ad0f9d3ba880ff58a60485df5d33f8f5e0fb73188600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aa334a426ea9e21d5f84eb2d4723ca56b92382b9260ab2b6769b7c23d437b6b512322a25cecc954127e60cf91ef056ac1da25f90b73be81c3ff1872fa48d10c7ef1ccb4087bbeedb54b1417a24abbb76f6cd57010a65bb03c7b6602b1eaf0e32c67c54168232d4edc0bfa1b815b2af2a2d0a5c109d675a4f2de684e51df9abb324ab1b19a81bac80f9ce3a45095f3df3a7cf69ef18fc08e94ac3cbc1c7effeacca68e3bfe5d81e26a659b500000000000000000000000000000000000000000000";
+        let sig = "sequenceBatchesValidium((bytes32,bytes32,uint64,bytes32)[],uint64,uint64,address,bytes)";
+        let decoded = Cast::calldata_decode(sig, data, true).unwrap();
+        let decoded = (
+            (
+                (
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[0].as_tuple().unwrap()[0].as_fixed_bytes(),
+                    ),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[0].as_tuple().unwrap()[1].as_fixed_bytes(),
+                    ),
+                    decoded[0].as_array().unwrap()[0].as_tuple().unwrap()[2]
+                        .as_uint()
+                        .unwrap()
+                        .0
+                        .to_string(),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[0].as_tuple().unwrap()[3].as_fixed_bytes(),
+                    ),
+                ),
+                (
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[1].as_tuple().unwrap()[0].as_fixed_bytes(),
+                    ),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[1].as_tuple().unwrap()[1].as_fixed_bytes(),
+                    ),
+                    decoded[0].as_array().unwrap()[1].as_tuple().unwrap()[2]
+                        .as_uint()
+                        .unwrap()
+                        .0
+                        .to_string(),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[1].as_tuple().unwrap()[3].as_fixed_bytes(),
+                    ),
+                ),
+                (
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[2].as_tuple().unwrap()[0].as_fixed_bytes(),
+                    ),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[2].as_tuple().unwrap()[1].as_fixed_bytes(),
+                    ),
+                    decoded[0].as_array().unwrap()[2].as_tuple().unwrap()[2]
+                        .as_uint()
+                        .unwrap()
+                        .0
+                        .to_string(),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[2].as_tuple().unwrap()[3].as_fixed_bytes(),
+                    ),
+                ),
+                (
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[3].as_tuple().unwrap()[0].as_fixed_bytes(),
+                    ),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[3].as_tuple().unwrap()[1].as_fixed_bytes(),
+                    ),
+                    decoded[0].as_array().unwrap()[3].as_tuple().unwrap()[2]
+                        .as_uint()
+                        .unwrap()
+                        .0
+                        .to_string(),
+                    fixed_bytes_to_hex(
+                        decoded[0].as_array().unwrap()[3].as_tuple().unwrap()[3].as_fixed_bytes(),
+                    ),
+                ),
+            ),
+            decoded[1].as_uint().unwrap().0.to_string(),
+            decoded[2].as_uint().unwrap().0.to_string(),
+            decoded[3].as_address().unwrap().to_string().to_lowercase(),
+            format!("0x{}", hex::encode(decoded[4].as_bytes().unwrap())),
+        );
+        assert_eq!(
+            decoded,
+            (
+                (
+                  (
+                    "0x04366a6dc4b2f348a85e0066e46f0cc206fca6512e0ed7f17ca7afb88e9a4c27".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                    "0".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+                  ),
+                  (
+                    "0x093922dee6e380c28a50c008ab167b7800bb24c2026cd1b22f1c6fb884ceed74".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                    "0".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+                  ),
+                  (
+                    "0x60f85e59ecad6c1a6be343a945abedb7d5b5bfad7817c4d8cc668da7d391faf7".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                    "0".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+                  ),
+                  (
+                    "0x93dfbf04395fbec1f1aed4ad0f9d3ba880ff58a60485df5d33f8f5e0fb731886".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                    "0".to_string(),
+                    "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+                  )
+                ),
+                "1735573273".to_string(),
+                "132886".to_string(),
+                "0xAF9d27ffe4d51eD54AC8eEc78f2785D7E11E5ab1".to_string().to_lowercase(),
+                "0x334a426ea9e21d5f84eb2d4723ca56b92382b9260ab2b6769b7c23d437b6b512322a25cecc954127e60cf91ef056ac1da25f90b73be81c3ff1872fa48d10c7ef1ccb4087bbeedb54b1417a24abbb76f6cd57010a65bb03c7b6602b1eaf0e32c67c54168232d4edc0bfa1b815b2af2a2d0a5c109d675a4f2de684e51df9abb324ab1b19a81bac80f9ce3a45095f3df3a7cf69ef18fc08e94ac3cbc1c7effeacca68e3bfe5d81e26a659b5".to_string().to_lowercase()
+            )
+        );
+    }
+
+    fn fixed_bytes_to_hex(fixed_bytes: Option<(&[u8], usize)>) -> String {
+        let fixed_bytes_as_slice = hex::encode(fixed_bytes.unwrap().0.iter().as_slice());
+        let fixed_bytes_hex = format!("0x{}", fixed_bytes_as_slice);
+        fixed_bytes_hex
     }
 
     #[test]

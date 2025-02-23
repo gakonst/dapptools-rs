@@ -23,6 +23,8 @@ use foundry_common::{
     shell, stdin,
 };
 use foundry_config::Config;
+use regex::Regex;
+use serde_json::{self, Value};
 use std::time::Instant;
 
 pub mod args;
@@ -709,7 +711,22 @@ async fn main_args(args: CastArgs) -> Result<()> {
     fn print_tokens(tokens: &[DynSolValue]) {
         if shell::is_json() {
             let tokens: Vec<String> = format_tokens_raw(tokens).collect();
-            let _ = sh_println!("{}", serde_json::to_string_pretty(&tokens).unwrap());
+            let tokens_str: String = serde_json::to_string(&tokens).unwrap();
+            let input = tokens_str.replace("(", "[").replace(")", "]");
+            let data: Vec<String> = serde_json::from_str(&input).unwrap();
+            let re = Regex::new(r"0x[0-9a-fA-F]+").unwrap();
+            let mut result: Vec<Value> = Vec::new();
+
+            for i in data {
+                let i =
+                    re.replace_all(&i, |caps: &regex::Captures<'_>| format!(r#""{}""#, &caps[0]));
+
+                let d: Value = serde_json::from_str(&i).unwrap();
+                result.push(d);
+            }
+
+            let output = serde_json::to_string_pretty(&result).unwrap();
+            let _ = sh_println!("{}", output);
         } else {
             let tokens = format_tokens(tokens);
             tokens.for_each(|t| {
