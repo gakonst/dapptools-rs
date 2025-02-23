@@ -348,5 +348,45 @@ mod tests {
         assert!(matches!(fallback.source, ParseSource::Function(_)));
     }
 
-    // TODO: test regular doc comments & natspec
+    #[test]
+    fn contract_with_doc_comments() {
+        let items = parse_source(
+            r"
+            pragma solidity ^0.8.19;
+            /// @name Test
+            ///  no tag
+            ///@notice    Cool contract    
+            ///   @  dev     This is not a dev tag 
+            /**
+             * @dev line one
+             *    line 2
+             */
+            contract Test {
+                /*** my function    
+                      i like whitespace    
+            */
+                function test() {}
+            }
+        ",
+        );
+
+        assert_eq!(items.len(), 1);
+
+        let contract = items.first().unwrap();
+        assert_eq!(contract.comments.len(), 2);
+        assert_eq!(
+            *contract.comments.first().unwrap(),
+            Comment::new(CommentTag::Notice, "Cool contract".to_owned())
+        );
+        assert_eq!(
+            *contract.comments.get(1).unwrap(),
+            Comment::new(CommentTag::Dev, "line one\nline 2".to_owned())
+        );
+
+        let function = contract.children.first().unwrap();
+        assert_eq!(
+            *function.comments.first().unwrap(),
+            Comment::new(CommentTag::Notice, "my function\ni like whitespace".to_owned())
+        );
+    }
 }
