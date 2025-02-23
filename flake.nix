@@ -47,6 +47,7 @@
           # Environment variables
           RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
           LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.libusb1 ];
+          CFLAGS = "-DJEMALLOC_STRERROR_R_RETURNS_CHAR_WITH_GNU_SOURCE";
         };
       });
 }
