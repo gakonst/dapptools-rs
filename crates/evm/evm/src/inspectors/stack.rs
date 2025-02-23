@@ -581,7 +581,6 @@ impl InspectorStackRefMut<'_> {
 
         let cached_env = ecx.env.clone();
 
-        ecx.env.block.basefee = U256::ZERO;
         ecx.env.tx.caller = caller;
         ecx.env.tx.transact_to = transact_to;
         ecx.env.tx.data = input;
@@ -594,7 +593,6 @@ impl InspectorStackRefMut<'_> {
             ecx.env.tx.gas_limit =
                 std::cmp::min(ecx.env.tx.gas_limit, ecx.env.block.gas_limit.to());
         }
-        ecx.env.tx.gas_price = U256::ZERO;
 
         self.inner_context_data = Some(InnerContextData { original_origin: cached_env.tx.caller });
         self.in_inner_context = true;
